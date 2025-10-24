@@ -45,7 +45,7 @@ export function MapView({
     lng: coords.longitude,
   })
 
-  // ✅ Cargar Google Maps solo una vez
+  // Cargar Google Maps solo una vez
   useEffect(() => {
     if (typeof window === "undefined") return
 
@@ -73,46 +73,17 @@ export function MapView({
     document.head.appendChild(script)
   }, [googleMapsApiKey])
 
-  // 🗺️ Inicializar mapa
+  // Inicializar mapa (modo claro)
   const initMap = () => {
     if (!mapRef.current) return
     const googleMaps = window.google.maps
 
-    // Tema oscuro azul marino
-    const darkMapStyle: google.maps.MapTypeStyle[] = [
-      { elementType: "geometry", stylers: [{ color: "#0f172a" }] },
-      { elementType: "labels.text.stroke", stylers: [{ color: "#0f172a" }] },
-      { elementType: "labels.text.fill", stylers: [{ color: "#38bdf8" }] },
-      {
-        featureType: "road",
-        elementType: "geometry",
-        stylers: [{ color: "#1e293b" }],
-      },
-      {
-        featureType: "road",
-        elementType: "geometry.stroke",
-        stylers: [{ color: "#334155" }],
-      },
-      {
-        featureType: "water",
-        elementType: "geometry",
-        stylers: [{ color: "#1e3a8a" }],
-      },
-      {
-        featureType: "poi",
-        elementType: "labels.text.fill",
-        stylers: [{ color: "#94a3b8" }],
-      },
-    ]
-
     mapInstanceRef.current = new googleMaps.Map(mapRef.current, {
       center: DEFAULT_CENTER,
       zoom: 12,
-      styles: darkMapStyle,
-      disableDefaultUI: false,
       mapTypeControl: false,
       streetViewControl: false,
-      fullscreenControl: false,
+      fullscreenControl: true,
     })
 
     // Agregar marcadores
@@ -124,14 +95,6 @@ export function MapView({
             position: toLatLngLiteral(addr.coordinates),
             map: mapInstanceRef.current!,
             title: addr.street,
-            icon: {
-              path: googleMaps.SymbolPath.CIRCLE,
-              scale: 6,
-              fillColor: "#38bdf8",
-              fillOpacity: 1,
-              strokeColor: "#0ea5e9",
-              strokeWeight: 1.5,
-            },
           })
           bounds.extend(marker.getPosition()!)
         }
@@ -140,7 +103,7 @@ export function MapView({
     }
   }
 
-  // ✅ Cargar geometry si no está disponible
+  // Cargar geometry si no está disponible
   const ensureGeometryLoaded = (): Promise<void> => {
     return new Promise((resolve, reject) => {
       if (window.google?.maps?.geometry?.encoding) {
@@ -168,20 +131,33 @@ export function MapView({
     })
   }
 
-  // 🧭 Dibujar polyline
+  // 🧭 Dibujar polyline de forma segura
   const drawPolyline = (path: google.maps.LatLng[]) => {
-    if (!mapInstanceRef.current) return
+    // Asegurar que el mapa está listo
+    if (!mapInstanceRef.current || !(mapInstanceRef.current instanceof window.google.maps.Map)) {
+      console.warn("El mapa aún no está listo. Reintentando en 300ms...")
+      setTimeout(() => drawPolyline(path), 300)
+      return
+    }
 
+    // Eliminar la ruta anterior si existe
     if (routePolylineRef.current) routePolylineRef.current.setMap(null)
 
+    // Crear la nueva línea
     routePolylineRef.current = new window.google.maps.Polyline({
-      map: mapInstanceRef.current!,
       path,
-      strokeColor: "#38bdf8",
+      strokeColor: "#1e40af",
       strokeOpacity: 0.9,
       strokeWeight: 5,
       geodesic: true,
     })
+
+    // Asignar el mapa solo si es válido
+    try {
+      routePolylineRef.current.setMap(mapInstanceRef.current)
+    } catch (err) {
+      console.error("Error al asignar el mapa a la polyline:", err)
+    }
   }
 
   // 🚗 Calcular ruta optimizada
@@ -240,7 +216,6 @@ export function MapView({
       const route = data.routes?.[0]
       if (!route) throw new Error("No se encontró ninguna ruta válida.")
 
-      // 🧩 Garantizar que geometry esté lista
       await ensureGeometryLoaded()
 
       const path = window.google.maps.geometry.encoding.decodePath(
@@ -286,22 +261,22 @@ export function MapView({
       </div>
 
       {/* Mapa */}
-      <Card className="border-[#1e293b] bg-[#0f172a]/60 shadow-md shadow-[#38bdf8]/10">
+      <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-[#38bdf8]">
+          <CardTitle className="flex items-center gap-2 rgb(0, 27, 78)">
             <MapPin className="h-5 w-5" />
             Vista del Mapa
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div ref={mapRef} className="h-[500px] w-full rounded-lg" />
+          <div ref={mapRef} className="h-[500px] w-full rounded-lg border" />
         </CardContent>
       </Card>
 
       {/* Punto de inicio */}
-      <Card className="border-[#1e293b] bg-[#0f172a]/50">
+      <Card>
         <CardHeader>
-          <CardTitle className="text-base text-[#38bdf8]">
+          <CardTitle className="text-base rgb(0, 27, 78)">
             Seleccioná el punto de inicio
           </CardTitle>
         </CardHeader>
@@ -309,7 +284,7 @@ export function MapView({
           {addresses.map((a) => (
             <label
               key={a.id}
-              className="flex items-center gap-2 text-sm cursor-pointer text-[#cbd5e1]"
+              className="flex items-center gap-2 text-sm cursor-pointer"
             >
               <input
                 type="checkbox"
@@ -329,7 +304,7 @@ export function MapView({
             <Button
               onClick={handleCalculateRoute}
               disabled={isCalculatingRoute}
-              className="w-full bg-[#1e40af] hover:bg-[#2563eb] text-white"
+              className="w-full rgb(0, 27, 78) hover:rgba(0, 41, 117, 1) text-white"
               size="lg"
             >
               {isCalculatingRoute ? (
@@ -346,19 +321,19 @@ export function MapView({
             </Button>
           ) : (
             <div className="space-y-3">
-              <Card className="bg-[#1e293b]/60 border-[#38bdf8]/20">
+              <Card className="rgb(0, 27, 78) hover:rgba(0, 41, 117, 1)">
                 <CardContent className="pt-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium text-[#38bdf8]">Ruta Optimizada</p>
-                      <p className="text-sm text-[#cbd5e1]">
+                      <p className="font-medium rgb(0, 27, 78)">Ruta Optimizada</p>
+                      <p className="text-sm text-gray-600">
                         {addresses.length} paradas • {distance} • {duration}
                       </p>
                     </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-[#38bdf8]/50 text-[#38bdf8]"
+                      className="rgb(0, 27, 78) hover:rgba(0, 41, 117, 1)"
                       onClick={handleRecalculateRoute}
                     >
                       <RotateCcw className="h-4 w-4" />
@@ -391,7 +366,7 @@ export function MapView({
                     window.open(url, "_blank")
                     onStartRoute?.()
                   }}
-                  className="w-full bg-[#2563eb] hover:bg-[#1e40af] text-white"
+                  className="w-full rgb(0, 27, 78) hover:rgba(0, 41, 117, 1) text-white"
                   size="lg"
                 >
                   <Play className="mr-2 h-5 w-5" />

@@ -7,11 +7,11 @@
   --background: oklch(1 0 0); /* #ffffff */
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(14.479% 0.00002 271.152);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
   /* Updated primary colors to brighter blue palette */
-  --primary: rgb(0, 30, 70); /* #006AF5 */
+  --primary: rgb(28, 70, 0); /* #006AF5 */
   --primary-foreground: oklch(0.985 0 0);
   --secondary:  rgb(0, 30, 70); /* #0044FF */
   --secondary-foreground: oklch(0.985 0 0);
@@ -63,7 +63,7 @@
   --border: oklch(0.269 0 0);
   --input: oklch(0.269 0 0);
   --ring: oklch(0.439 0 0);
-  --chart-1:  rgb(0, 27, 78);
+  --chart-1:  rgb(13, 78, 0);
   --chart-2: oklch(88.244% 0.19918 160.162);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);

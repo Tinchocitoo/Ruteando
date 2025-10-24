@@ -104,7 +104,7 @@ const handleComplete = (success: boolean) => {
                 </div>
                 <Button
                   onClick={() => setCurrentIndex((i) => i + 1)}
-                  className="w-full"
+                  className="w-full rgba(43, 255, 0, 1) hover:rgba(0, 255, 13, 1)"
                   variant="outline"
                 >
                   Comenzar recorrido →
@@ -117,7 +117,7 @@ const handleComplete = (success: boolean) => {
                   className="w-full"
                   variant="default"
                 >
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  <CheckCircle2 className="h-4 w-4 mr-2"/>
                   Entrega completada
                 </Button>
             

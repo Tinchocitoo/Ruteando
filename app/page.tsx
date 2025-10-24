@@ -1,327 +1,229 @@
 "use client"
 
-import type React from "react"
-import { useState, useEffect } from "react"
-import { useAuth } from "@/components/auth-context"
-import { ProfilePage } from "@/components/profile-page"
-import { AppHeader } from "@/components/layout/app-header"
-import { AppFooter } from "@/components/layout/app-footer"
-import { DriverDashboard } from "@/components/driver/driver-dashboard"
-import { AddressLoader } from "@/components/driver/address-loader"
+import { useEffect, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Loader2, MapPin, Home, History, Settings } from "lucide-react"
+
 import { MapView } from "@/components/map/map-view"
 import { RouteNavigation } from "@/components/driver/route-navigation"
-import { ManagerDashboard } from "@/components/manager/manager-dashboard"
-import { DriverRegistration } from "@/components/manager/driver-registration"
-import { DriversList } from "@/components/manager/drivers-list"
-import { DriverNotifications } from "@/components/notifications/driver-notifications"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useToast } from "@/hooks/use-toast"
-import { UserCheck, LogIn, UserPlus, ArrowLeft } from "lucide-react"
+import { DriverDashboard } from "@/components/driver/driver-dashboard"
 
-function AuthPage() {
-  const [isLogin, setIsLogin] = useState(true)
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [name, setName] = useState("")
-  const { login, register, isLoading } = useAuth()
-  const { toast } = useToast()
+import { Address } from "@/types/address"
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+type View =
+  | "loading"
+  | "dashboard"
+  | "map-view"
+  | "route-navigation"
+  | "history"
+  | "settings"
 
-    let success = false
-    if (isLogin) {
-      success = await login(email, password)
-    } else {
-      success = await register(name, email, password)
-    }
-
-    if (success) {
-      toast({
-        title: isLogin ? "Bienvenido" : "Cuenta creada",
-        description: isLogin ? "Has iniciado sesión correctamente" : "Tu cuenta ha sido creada exitosamente",
-      })
-    } else {
-      toast({
-        title: "Error",
-        description: isLogin ? "Credenciales incorrectas" : "No se pudo crear la cuenta",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleDemoAccess = async (role: "driver" | "manager") => {
-    const demoEmail = role === "manager" ? "manager@demo.com" : "driver@demo.com"
-    const success = await login(demoEmail, "demo123")
-
-    if (success) {
-      toast({
-        title: "Acceso demo",
-        description: `Bienvenido al modo ${role === "manager" ? "Gestor" : "Conductor"}`,
-      })
-    }
-  }
-
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-6">
-        {/* Logo and Header */}
-        <div className="text-center space-y-2">
-          <div className="flex justify-center">
-            <img src="/ruteando-logo.png" alt="Ruteando Logo" className="h-16 w-16 object-contain" />
-          </div>
-          <h1 className="text-2xl font-sans font-bold" style={{ color: "#0A2342" }}>
-            Ruteando
-          </h1>
-          <p className="text-muted-foreground font-serif">Gestión de entregas y rutas</p>
-        </div>
-
-        {/* Authentication Form */}
-        <Card>
-          <CardHeader>
-            <Tabs value={isLogin ? "login" : "register"} onValueChange={(value) => setIsLogin(value === "login")}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="login" className="flex items-center gap-2">
-                  <LogIn className="h-4 w-4" />
-                  Iniciar Sesión
-                </TabsTrigger>
-                <TabsTrigger value="register" className="flex items-center gap-2">
-                  <UserPlus className="h-4 w-4" />
-                  Registrarse
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="login">
-                <CardTitle>Bienvenido de vuelta</CardTitle>
-                <CardDescription>Ingresa tus credenciales para acceder</CardDescription>
-              </TabsContent>
-
-              <TabsContent value="register">
-                <CardTitle>Crear cuenta</CardTitle>
-                <CardDescription>Regístrate para comenzar a usar Ruteando</CardDescription>
-              </TabsContent>
-            </Tabs>
-          </CardHeader>
-
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {!isLogin && (
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nombre completo</Label>
-                  <Input
-                    id="name"
-                    type="text"
-                    placeholder="Tu nombre completo"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required={!isLogin}
-                  />
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Correo electrónico</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="tu@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Contraseña</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
-
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLogin ? (
-                  <>
-                    <LogIn className="mr-2 h-4 w-4" />
-                    Iniciar Sesión
-                  </>
-                ) : (
-                  <>
-                    <UserCheck className="mr-2 h-4 w-4" />
-                    Crear Cuenta
-                  </>
-                )}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* Demo Access */}
-        <Card className="bg-muted/50">
-          <CardContent className="pt-6">
-            <div className="text-center space-y-2">
-              <p className="text-sm text-muted-foreground font-serif">Acceso de demostración</p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 bg-transparent"
-                  onClick={() => handleDemoAccess("driver")}
-                  disabled={isLoading}
-                >
-                  Demo Conductor
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 bg-transparent"
-                  onClick={() => handleDemoAccess("manager")}
-                  disabled={isLoading}
-                >
-                  Demo Gestor
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  )
-}
-
-export default function HomePage() {
-  const { user, isLoading } = useAuth()
-  const [currentView, setCurrentView] = useState<
-    | "dashboard"
-    | "profile"
-    | "load-addresses"
-    | "map-view"
-    | "route-navigation"
-    | "register-driver"
-    | "drivers-list"
-    | "delivery-history"
-  >("dashboard")
-
-  const [addresses, setAddresses] = useState<any[]>([])
+export default function Page() {
+  const [isLoading, setIsLoading] = useState(true)
+  const [currentView, setCurrentView] = useState<View>("loading")
+  const [addresses, setAddresses] = useState<Address[]>([])
   const [deliveries, setDeliveries] = useState<any[]>([])
 
+  // 🧠 Carga inicial (direcciones e historial)
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search)
-    if (urlParams.get("view") === "profile") {
-      setCurrentView("profile")
+    try {
+      if (typeof window !== "undefined") {
+        const savedAddresses = localStorage.getItem("ruteando.addresses")
+        const savedHistory = localStorage.getItem("ruteando.history")
+        if (savedAddresses) setAddresses(JSON.parse(savedAddresses))
+        if (savedHistory) setDeliveries(JSON.parse(savedHistory))
+      }
+    } catch {
+      // ignorar errores de parseo
+    } finally {
+      setIsLoading(false)
+      setCurrentView("dashboard")
     }
   }, [])
 
-  const handleProfileClick = () => setCurrentView("profile")
-  const handleHomeClick = () => setCurrentView("dashboard")
-  const handleLoadAddresses = () => setCurrentView("load-addresses")
-  const handleRegisterDriver = () => setCurrentView("register-driver")
-  const handleViewDrivers = () => setCurrentView("drivers-list")
+  // 💾 Persistir direcciones si cambian
+  useEffect(() => {
+    try {
+      localStorage.setItem("ruteando.addresses", JSON.stringify(addresses))
+    } catch {}
+  }, [addresses])
+
+  // 💾 Persistir historial si cambia
+  useEffect(() => {
+    try {
+      localStorage.setItem("ruteando.history", JSON.stringify(deliveries))
+    } catch {}
+  }, [deliveries])
+
+  // --- Navegación global ---
   const handleViewMap = () => setCurrentView("map-view")
+  const handleHomeClick = () => setCurrentView("dashboard")
+  const handleHistoryClick = () => setCurrentView("history")
+  const handleSettingsClick = () => setCurrentView("settings")
+
+  // --- MapView → inicia recorrido
   const handleStartRoute = () => setCurrentView("route-navigation")
-  const handleViewHistory = () => setCurrentView("delivery-history")
 
-  const handleAddressesLoaded = (loadedAddresses: any[]) => {
-    setAddresses(loadedAddresses)
+  // --- RouteNavigation → recorrido completado
+  const handleRouteComplete = (summary: { completed: Address[]; failed: Address[]; date: string }) => {
+    setDeliveries((prev) => [...prev, summary])
     setCurrentView("dashboard")
   }
 
-  const handleDriverLinked = (driver: any) => {
-    console.log("Driver linked:", driver)
-    setCurrentView("dashboard")
+  // --- Dashboard → carga direcciones
+  const handleAddressesLoaded = (addressesList: Address[]) => {
+    setAddresses(addressesList)
+    setCurrentView("map-view")
   }
 
-  const handleRouteComplete = (completedDeliveries: any[]) => {
-    setDeliveries([...deliveries, ...completedDeliveries])
-    setCurrentView("dashboard")
-  }
-
+  // Pantalla de carga inicial
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-2">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-          <p className="text-muted-foreground">Cargando...</p>
-        </div>
-      </div>
+      <main className="max-w-5xl mx-auto p-6">
+        <Card>
+          <CardContent className="py-24 flex flex-col items-center justify-center gap-3">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <p className="text-sm text-muted-foreground">Cargando Ruteando…</p>
+          </CardContent>
+        </Card>
+      </main>
     )
   }
 
-  if (!user) {
-    return <AuthPage />
-  }
-
+  // --- Renderizado principal ---
   return (
-    <>
-      <div className="min-h-screen bg-background flex flex-col">
-        <AppHeader onProfileClick={handleProfileClick} />
-
-        <main className="flex-1 p-4">
-          {currentView === "profile" && <ProfilePage />}
-          {currentView === "load-addresses" && (
-            <AddressLoader onBack={handleHomeClick} onAddressesLoaded={handleAddressesLoaded} />
-          )}
-          {currentView === "map-view" && (
-            <MapView addresses={addresses} onBack={handleHomeClick} onStartRoute={handleStartRoute} />
-          )}
-          {currentView === "route-navigation" && (
-            <RouteNavigation addresses={addresses} onBack={handleHomeClick} onRouteComplete={handleRouteComplete} />
-          )}
-          {currentView === "register-driver" && (
-            <DriverRegistration onBack={handleHomeClick} onDriverLinked={handleDriverLinked} />
-          )}
-          {currentView === "drivers-list" && <DriversList onBack={handleHomeClick} />}
-          {currentView === "delivery-history" && (
-            <div className="space-y-6">
-              <div className="flex items-center gap-4">
-                <Button variant="ghost" size="sm" onClick={handleHomeClick}>
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Volver
-                </Button>
-                <div>
-                  <h1 className="text-xl font-sans font-bold">Historial de Entregas</h1>
-                  <p className="text-sm text-muted-foreground">Todas tus entregas realizadas</p>
-                </div>
-              </div>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-center space-y-2">
-                    <p className="text-muted-foreground">Próximamente: Historial detallado de entregas</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-          {currentView === "dashboard" && (
-            <>
-              {user.role === "driver" ? (
-                <DriverDashboard
-                  onLoadAddresses={handleLoadAddresses}
-                  onViewMap={handleViewMap}
-                  onViewHistory={handleViewHistory}
-                  addresses={addresses}
-                  deliveries={deliveries}
-                />
-              ) : (
-                <ManagerDashboard onRegisterDriver={handleRegisterDriver} onViewDrivers={handleViewDrivers} />
-              )}
-            </>
-          )}
-        </main>
-
-        <AppFooter onHomeClick={handleHomeClick} onProfileClick={handleProfileClick} />
+    <main className="max-w-5xl mx-auto p-6 space-y-6">
+      {/* NAV SUPERIOR */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button
+          variant={currentView === "dashboard" ? "default" : "outline"}
+          onClick={handleHomeClick}
+          className="gap-2"
+        >
+          <Home className="h-4 w-4" />
+          Inicio
+        </Button>
+        <Button
+          variant={currentView === "map-view" ? "default" : "outline"}
+          onClick={handleViewMap}
+          className="gap-2"
+        >
+          <MapPin className="h-4 w-4" />
+          Mapa
+        </Button>
+        <Button
+          variant={currentView === "history" ? "default" : "outline"}
+          onClick={handleHistoryClick}
+          className="gap-2"
+        >
+          <History className="h-4 w-4" />
+          Historial
+        </Button>
+        <Button
+          variant={currentView === "settings" ? "default" : "outline"}
+          onClick={handleSettingsClick}
+          className="gap-2"
+        >
+          <Settings className="h-4 w-4" />
+          Configuración
+        </Button>
       </div>
 
-      {/* Driver Notifications Overlay */}
-      <DriverNotifications />
-    </>
+      {/* VISTAS PRINCIPALES */}
+      {currentView === "dashboard" && (
+        <div className="space-y-6">
+          <DriverDashboard
+            onLoadAddresses={handleAddressesLoaded}
+            onViewMap={handleViewMap}
+            deliveries={deliveries}
+          />
+        </div>
+      )}
+
+      {currentView === "map-view" && (
+        <MapView
+          addresses={addresses}
+          onBack={handleHomeClick}
+          onStartRoute={handleStartRoute}
+          showRouteControls
+        />
+      )}
+
+      {currentView === "route-navigation" && (
+        <RouteNavigation
+          addresses={addresses}
+          onBack={handleViewMap}
+          onComplete={handleRouteComplete}
+        />
+      )}
+
+      {currentView === "history" && (
+        <div className="space-y-4">
+          <div>
+            <h1 className="text-xl font-sans font-bold">Historial de Recorridos</h1>
+            <p className="text-sm text-muted-foreground">Tus rutas completadas y fallidas</p>
+          </div>
+
+          {deliveries.length > 0 ? (
+            deliveries.map((route, i) => (
+              <Card key={i}>
+                <CardHeader>
+                  <CardTitle>
+                    Recorrido {i + 1} — {route.date}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {/* Completadas */}
+                  <p className="font-medium text-green-600 mb-1">
+                    Entregas completadas ({route.completed.length})
+                  </p>
+                  <ul className="text-sm mb-3 space-y-1">
+                    {route.completed.map((a: Address) => (
+                      <li key={a.id}>✅ {a.street}</li>
+                    ))}
+                  </ul>
+
+                  {/* Fallidas */}
+                  <p className="font-medium text-red-600 mb-1">
+                    Entregas fallidas ({route.failed.length})
+                  </p>
+                  <ul className="text-sm space-y-1">
+                    {route.failed.map((a: Address) => (
+                      <li key={a.id}>❌ {a.street}</li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            ))
+          ) : (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                Aún no registraste recorridos.  
+                Comenzá cargando direcciones desde el panel principal 🚚
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {currentView === "settings" && (
+        <div className="space-y-4">
+          <div>
+            <h1 className="text-xl font-sans font-bold">Configuración</h1>
+            <p className="text-sm text-muted-foreground">Preferencias de tu cuenta y de la app</p>
+          </div>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center space-y-2">
+                <p className="text-muted-foreground">
+                  Próximamente: ajustes de notificaciones, permisos y más
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </main>
   )
 }

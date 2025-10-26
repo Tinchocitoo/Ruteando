@@ -10,6 +10,7 @@ import { RouteNavigation } from "@/components/driver/route-navigation"
 import { DriverDashboard } from "@/components/driver/driver-dashboard"
 
 import { Address } from "@/types/address"
+import type { DireccionBackend } from "@/types/backend"
 
 type View =
   | "loading"
@@ -19,62 +20,121 @@ type View =
   | "history"
   | "settings"
 
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+
 export default function Page() {
   const [isLoading, setIsLoading] = useState(true)
   const [currentView, setCurrentView] = useState<View>("loading")
-  const [addresses, setAddresses] = useState<Address[]>([])
-  const [deliveries, setDeliveries] = useState<any[]>([])
 
-  // 🧠 Carga inicial (direcciones e historial)
+  const [addresses, setAddresses] = useState<Address[]>([])
+  const [direccionesBackend, setDireccionesBackend] = useState<DireccionBackend[]>([])
+  const [deliveries, setDeliveries] = useState<any[]>([])
+  const [conductorId] = useState<number>(45)
+
+  // 🧠 Carga inicial
   useEffect(() => {
     try {
       if (typeof window !== "undefined") {
         const savedAddresses = localStorage.getItem("ruteando.addresses")
         const savedHistory = localStorage.getItem("ruteando.history")
+        const savedDireccionesBackend = localStorage.getItem("ruteando.backend.addresses")
+
         if (savedAddresses) setAddresses(JSON.parse(savedAddresses))
         if (savedHistory) setDeliveries(JSON.parse(savedHistory))
+        if (savedDireccionesBackend) setDireccionesBackend(JSON.parse(savedDireccionesBackend))
       }
     } catch {
-      // ignorar errores de parseo
+      // ignorar errores
     } finally {
       setIsLoading(false)
       setCurrentView("dashboard")
     }
   }, [])
 
-  // 💾 Persistir direcciones si cambian
+  // 💾 Persistencia
   useEffect(() => {
     try {
       localStorage.setItem("ruteando.addresses", JSON.stringify(addresses))
     } catch {}
   }, [addresses])
 
-  // 💾 Persistir historial si cambia
   useEffect(() => {
     try {
       localStorage.setItem("ruteando.history", JSON.stringify(deliveries))
     } catch {}
   }, [deliveries])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem("ruteando.backend.addresses", JSON.stringify(direccionesBackend))
+    } catch {}
+  }, [direccionesBackend])
+
   // --- Navegación global ---
   const handleViewMap = () => setCurrentView("map-view")
   const handleHomeClick = () => setCurrentView("dashboard")
   const handleHistoryClick = () => setCurrentView("history")
   const handleSettingsClick = () => setCurrentView("settings")
-
-  // --- MapView → inicia recorrido
   const handleStartRoute = () => setCurrentView("route-navigation")
 
-  // --- RouteNavigation → recorrido completado
   const handleRouteComplete = (summary: { completed: Address[]; failed: Address[]; date: string }) => {
     setDeliveries((prev) => [...prev, summary])
     setCurrentView("dashboard")
   }
 
-  // --- Dashboard → carga direcciones
-  const handleAddressesLoaded = (addressesList: Address[]) => {
+  // --- Dashboard: carga y envía direcciones al backend ---
+  const handleAddressesLoaded = async (addressesList: Address[]) => {
     setAddresses(addressesList)
-    setCurrentView("map-view")
+
+    try {
+      const body = {
+        direcciones: addressesList.map((a) => ({
+          address: {
+            formatted_address: a.street,
+            components: {
+              route: a.street.split(" ")[0] || "",
+              street_number: a.street.split(" ")[1] || "",
+              locality: a.city || "",
+              administrative_area_level_1: a.state || "",
+              country: a.country || "AR",
+              postal_code: a.zipCode || "",
+            },
+            location: {
+              lat: a.coordinates?.latitude,
+              lng: a.coordinates?.longitude,
+            },
+          },
+          floor: a.floor || "",
+          apartment: a.apartment || "",
+          packages: 1,
+        })),
+      }
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      }
+
+      const response = await fetch(`${API_URL}/api/cargar_direcciones/`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("Error al cargar direcciones:", errorText)
+        alert("Error al enviar direcciones al backend.")
+        return
+      }
+
+      const data = await response.json()
+      console.log("Direcciones procesadas por el backend:", data)
+      setDireccionesBackend(data.direcciones)
+      setCurrentView("map-view")
+    } catch (err) {
+      console.error("Error en el envío de direcciones:", err)
+      alert("No se pudieron enviar las direcciones al backend.")
+    }
   }
 
   // Pantalla de carga inicial
@@ -144,6 +204,8 @@ export default function Page() {
       {currentView === "map-view" && (
         <MapView
           addresses={addresses}
+          direccionesBackend={direccionesBackend}
+          conductorId={conductorId}
           onBack={handleHomeClick}
           onStartRoute={handleStartRoute}
           showRouteControls
@@ -174,7 +236,6 @@ export default function Page() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {/* Completadas */}
                   <p className="font-medium text-green-600 mb-1">
                     Entregas completadas ({route.completed.length})
                   </p>
@@ -184,7 +245,6 @@ export default function Page() {
                     ))}
                   </ul>
 
-                  {/* Fallidas */}
                   <p className="font-medium text-red-600 mb-1">
                     Entregas fallidas ({route.failed.length})
                   </p>

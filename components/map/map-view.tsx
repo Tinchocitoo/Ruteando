@@ -133,7 +133,14 @@ export function MapView({
       direccionesBackend.length
         ? direccionesBackend
         : addresses
-            .filter((a) => a.coordinates)
+            .filter(
+              (a) =>
+                a.coordinates &&
+                typeof a.coordinates.latitude === "number" &&
+                typeof a.coordinates.longitude === "number" &&
+                !isNaN(a.coordinates.latitude) &&
+                !isNaN(a.coordinates.longitude)
+            )
             .map((a, idx) => ({
               id: idx + 1,
               texto_normalizado: a.street,
@@ -153,7 +160,11 @@ export function MapView({
 
     setIsCalculatingRoute(true)
     try {
-      const resp = await apiCalcularRuta({ direcciones: payloadDirecciones })
+      const resp = await apiCalcularRuta({
+        latitud_origen: -34.6037389,   // Coordenadas de prueba (Obelisco)
+        longitud_origen: -58.3815704,  // Coordenadas de prueba (Obelisco)
+        direcciones: payloadDirecciones,
+      })
       setRutaBackend(resp)
 
       await ensureGeometryLoaded()

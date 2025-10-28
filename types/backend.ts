@@ -43,6 +43,8 @@ export type CargarDireccionesResponse = {
 }
 
 export type CalcularRutaRequest = {
+  latitud_origen: number
+  longitud_origen: number
   direcciones: DireccionBackend[]
 }
 

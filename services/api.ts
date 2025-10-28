@@ -83,7 +83,7 @@ async function http<T>(url: string, init?: RequestInit): Promise<T> {
 
 // 📍 Cargar direcciones
 export function apiCargarDirecciones(payload: CargarDireccionesRequest) {
-  return http<CargarDireccionesResponse>("/api/cargar_direcciones/", {
+  return http<CargarDireccionesResponse>("/api/direcciones/cargar_direcciones/", {
     method: "POST",
     body: JSON.stringify(payload),
   })

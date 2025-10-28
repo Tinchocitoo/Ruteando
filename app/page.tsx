@@ -114,7 +114,7 @@ export default function Page() {
         "Content-Type": "application/json",
       }
 
-      const response = await fetch(`${API_URL}/api/cargar_direcciones/`, {
+      const response = await fetch(`${API_URL}/api/direcciones/cargar_direcciones/`, {
         method: "POST",
         headers,
         body: JSON.stringify(body),

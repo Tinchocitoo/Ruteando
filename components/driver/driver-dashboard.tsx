@@ -207,7 +207,7 @@ export function DriverDashboard({ onLoadAddresses, onViewMap, deliveries = [], o
             </Button>
             <Button variant="outline" onClick={handleSendToBackend} disabled={loading}>
               <MapPin className="h-4 w-4 mr-2" />
-              Enviar al backend
+              Cargar direcciones
             </Button>
             <Button variant="ghost" onClick={handleLoadExample}>
               <Upload className="h-4 w-4 mr-2" />

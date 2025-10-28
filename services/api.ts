@@ -9,7 +9,15 @@ import {
   IniciarRutaResponse,
 } from "@/types/backend"
 
-const BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").replace(/\/+$/, "")
+/* ==========================
+   🔧 CONFIGURACIÓN BASE
+========================== */
+
+const BASE =
+  (process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "").replace(/\/+$/, "")
+
 const STATIC_BEARER = process.env.NEXT_PUBLIC_API_BEARER
 
 function authHeaders(): Record<string, string> {
@@ -22,12 +30,17 @@ function authHeaders(): Record<string, string> {
   }
 }
 
+/* ==========================
+   ⚙️ FUNCIÓN BASE http()
+========================== */
+
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   if (!BASE) {
-    throw new Error("⚠️ Falta NEXT_PUBLIC_API_BASE_URL en .env.local (ej: http://127.0.0.1:8000)")
+    throw new Error(
+      "⚠️ Falta NEXT_PUBLIC_API_BASE_URL o NEXT_PUBLIC_API_URL en .env.local (ej: http://127.0.0.1:8000)"
+    )
   }
 
-  // 🔹 Merge seguro de headers con tipos correctos
   const baseHeaders: Record<string, string> = {
     "Content-Type": "application/json",
     ...authHeaders(),
@@ -37,21 +50,14 @@ async function http<T>(url: string, init?: RequestInit): Promise<T> {
 
   if (init?.headers) {
     if (init.headers instanceof Headers) {
-      // Caso Headers
       const headersCopy = new Headers(init.headers)
-      for (const [k, v] of Object.entries(baseHeaders)) {
-        headersCopy.set(k, v)
-      }
+      for (const [k, v] of Object.entries(baseHeaders)) headersCopy.set(k, v)
       mergedHeaders = headersCopy
     } else if (Array.isArray(init.headers)) {
-      // Caso Array de tuplas
       const arrayHeaders: [string, string][] = [...init.headers]
-      for (const [k, v] of Object.entries(baseHeaders)) {
-        arrayHeaders.push([k, v])
-      }
+      for (const [k, v] of Object.entries(baseHeaders)) arrayHeaders.push([k, v])
       mergedHeaders = arrayHeaders
     } else {
-      // Caso Record<string, string>
       mergedHeaders = { ...init.headers, ...baseHeaders }
     }
   }
@@ -64,14 +70,18 @@ async function http<T>(url: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text()
+    console.error(`❌ Error ${res.status} en ${url}:`, text)
     throw new Error(`HTTP ${res.status} - ${text}`)
   }
 
   return res.json() as Promise<T>
 }
 
-/* --------- Endpoints --------- */
+/* ==========================
+   🧭 ENDPOINTS DISPONIBLES
+========================== */
 
+// 📍 Cargar direcciones
 export function apiCargarDirecciones(payload: CargarDireccionesRequest) {
   return http<CargarDireccionesResponse>("/api/cargar_direcciones/", {
     method: "POST",
@@ -79,6 +89,7 @@ export function apiCargarDirecciones(payload: CargarDireccionesRequest) {
   })
 }
 
+// 🗺️ Calcular ruta óptima
 export function apiCalcularRuta(payload: CalcularRutaRequest) {
   return http<CalcularRutaResponse>("/api/rutas/calcular/", {
     method: "POST",
@@ -86,6 +97,7 @@ export function apiCalcularRuta(payload: CalcularRutaRequest) {
   })
 }
 
+// 🚚 Asignar ruta a un conductor
 export function apiAsignarRuta(payload: AsignarRutaRequest) {
   return http<AsignarRutaResponse>("/api/rutas/asignar/", {
     method: "POST",
@@ -93,6 +105,7 @@ export function apiAsignarRuta(payload: AsignarRutaRequest) {
   })
 }
 
+// ▶️ Iniciar ruta (crear entregas)
 export function apiIniciarRuta(payload: IniciarRutaRequest) {
   return http<IniciarRutaResponse>("/api/entregas/iniciar_ruta/", {
     method: "POST",

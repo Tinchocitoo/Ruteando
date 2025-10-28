@@ -167,25 +167,6 @@ const drawPolyline = (encodedPolyline: string, map: google.maps.Map) => {
   });
 };
 
-
-  const ensureGeometryLoaded = (): Promise<void> =>
-    new Promise((resolve, reject) => {
-      const g = (window as any).google;
-      if (g?.maps?.geometry?.encoding) return resolve();
-
-      console.log("🔹 Cargando librería geometry...");
-      const script = document.createElement("script");
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${googleMapsApiKey}&libraries=geometry`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        console.log("✅ Librería geometry cargada");
-        resolve();
-      };
-      script.onerror = () => reject(new Error("❌ No se pudo cargar geometry"));
-      document.head.appendChild(script);
-    });
-
   // 🧮 Calcular ruta usando tu backend
   const handleCalculateRoute = async () => {
     const payloadDirecciones: DireccionBackend[] = direccionesBackend.length
@@ -222,8 +203,8 @@ const drawPolyline = (encodedPolyline: string, map: google.maps.Map) => {
     try {
       console.log("🛰️ Enviando payload al backend...");
       const resp = await apiCalcularRuta({
-        latitud_origen: -34.6037389, // Obelisco
-        longitud_origen: -58.3815704,
+        latitud_origen: -34.1785793, // UTN
+        longitud_origen: -58.9624201,
         direcciones: payloadDirecciones,
       });
 

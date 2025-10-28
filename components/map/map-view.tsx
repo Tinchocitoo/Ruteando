@@ -203,8 +203,8 @@ const drawPolyline = (encodedPolyline: string, map: google.maps.Map) => {
     try {
       console.log("🛰️ Enviando payload al backend...");
       const resp = await apiCalcularRuta({
-        latitud_origen: -34.1785793, // UTN
-        longitud_origen: -58.9624201,
+        latitud_origen: -34.1786414, // UTN
+        longitud_origen: -58.9624094,
         direcciones: payloadDirecciones,
       });
 

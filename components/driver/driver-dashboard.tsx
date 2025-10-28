@@ -37,43 +37,60 @@ export function DriverDashboard({ onLoadAddresses, onViewMap, deliveries = [], o
     coordinates: undefined,
   })
 
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    if ((window as any).google?.maps?.places) {
-      setMapsReady(true)
-      return
-    }
-    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-    if (!key) return
-    if (document.querySelector("#places-script")) {
-      setMapsReady(true); return
-    }
-    const script = document.createElement("script")
-    script.id = "places-script"
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`
-    script.async = true
-    script.defer = true
-    script.onload = () => setMapsReady(true)
-    document.head.appendChild(script)
-  }, [])
+useEffect(() => {
+  if (typeof window === "undefined") return
+  if ((window as any).google?.maps?.places) {
+    setMapsReady(true)
+    return
+  }
 
-  useEffect(() => {
-    if (!mapsReady || !inputRef.current) return
-    autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
+  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+  if (!key) return
+
+  if (document.querySelector("#places-script")) {
+    setMapsReady(true); return
+  }
+
+  const script = document.createElement("script")
+  script.id = "places-script"
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`
+  script.async = true
+  script.defer = true
+  script.onload = () => setMapsReady(true)
+  document.head.appendChild(script)
+}, [])
+
+
+useEffect(() => {
+  if (!mapsReady || !inputRef.current) return;
+
+  // Espera hasta que google.maps.places exista realmente
+  const waitForGoogle = () => {
+    if (typeof window === "undefined" || !window.google?.maps?.places) {
+      console.warn("⏳ Esperando que Google Maps esté listo...");
+      setTimeout(waitForGoogle, 300);
+      return;
+    }
+
+    console.log("✅ Google Maps Places completamente cargado");
+
+    // Inicializa el autocompletado
+    autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current!, {
       fields: ["address_components", "geometry", "formatted_address"],
       // componentRestrictions: { country: "ar" }, // opcional
-    })
+    });
+
     autocompleteRef.current.addListener("place_changed", () => {
-      const place = autocompleteRef.current?.getPlace()
-      if (!place?.geometry?.location) return
+      const place = autocompleteRef.current?.getPlace();
+      if (!place?.geometry?.location) return;
 
-      const lat = place.geometry.location.lat()
-      const lng = place.geometry.location.lng()
+      const lat = place.geometry.location.lat();
+      const lng = place.geometry.location.lng();
 
-      const comp: Record<string, string> = {}
+      const comp: Record<string, string> = {};
       place.address_components?.forEach((c) => {
-        for (const t of c.types) comp[t] = c.long_name
-      })
+        for (const t of c.types) comp[t] = c.long_name;
+      });
 
       setForm((prev) => ({
         ...prev,
@@ -83,9 +100,12 @@ export function DriverDashboard({ onLoadAddresses, onViewMap, deliveries = [], o
         zipCode: comp.postal_code || "",
         country: comp.country || "",
         coordinates: { latitude: lat, longitude: lng },
-      }))
-    })
-  }, [mapsReady])
+      }));
+    });
+  };
+
+  waitForGoogle();
+}, [mapsReady]);
 
   const handleChange = (field: keyof Address, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }))

@@ -28,6 +28,8 @@ export default function Page() {
 
   const [addresses, setAddresses] = useState<Address[]>([])
   const [direccionesBackend, setDireccionesBackend] = useState<DireccionBackend[]>([])
+  const [orderedRouteAddresses, setOrderedRouteAddresses] = useState<Address[]>([])
+  const [currentRutaId, setCurrentRutaId] = useState<number | null>(null)
   const [deliveries, setDeliveries] = useState<any[]>([])
   const [conductorId] = useState<number>(45)
 
@@ -75,7 +77,14 @@ export default function Page() {
   const handleHomeClick = () => setCurrentView("dashboard")
   const handleHistoryClick = () => setCurrentView("history")
   const handleSettingsClick = () => setCurrentView("settings")
-  const handleStartRoute = () => setCurrentView("route-navigation")
+  const handleStartRoute = (rutaId: number) => {
+    setCurrentRutaId(rutaId)
+    setCurrentView("route-navigation")
+  }
+  const handleRouteCalculated = (orderedAddresses: Address[], rutaId: number) => {
+    setOrderedRouteAddresses(orderedAddresses)
+    setCurrentRutaId(rutaId)
+  }
 
   const handleRouteComplete = (summary: { completed: Address[]; failed: Address[]; date: string }) => {
     setDeliveries((prev) => [...prev, summary])
@@ -208,13 +217,16 @@ export default function Page() {
           conductorId={conductorId}
           onBack={handleHomeClick}
           onStartRoute={handleStartRoute}
+          onRouteCalculated={handleRouteCalculated}
           showRouteControls
         />
       )}
 
       {currentView === "route-navigation" && (
         <RouteNavigation
-          addresses={addresses}
+          addresses={orderedRouteAddresses.length > 0 ? orderedRouteAddresses : addresses}
+          rutaId={currentRutaId}
+          conductorId={conductorId}
           onBack={handleViewMap}
           onComplete={handleRouteComplete}
         />

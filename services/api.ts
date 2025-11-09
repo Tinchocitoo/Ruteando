@@ -7,6 +7,8 @@ import {
   CalcularRutaResponse,
   IniciarRutaRequest,
   IniciarRutaResponse,
+  RegistrarIntentoEntregaRequest,
+  RegistrarIntentoEntregaResponse,
 } from "@/types/backend"
 
 /* ==========================
@@ -108,6 +110,14 @@ export function apiAsignarRuta(payload: AsignarRutaRequest) {
 // ▶️ Iniciar ruta (crear entregas)
 export function apiIniciarRuta(payload: IniciarRutaRequest) {
   return http<IniciarRutaResponse>("/api/entregas/iniciar_ruta/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+// ✅ Registrar intento de entrega (completada o fallida)
+export function apiRegistrarIntentoEntrega(payload: RegistrarIntentoEntregaRequest) {
+  return http<RegistrarIntentoEntregaResponse>("/api/entregas/registrar_intento/", {
     method: "POST",
     body: JSON.stringify(payload),
   })

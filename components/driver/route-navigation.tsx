@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -7,11 +7,16 @@ import {
   XCircle,
   Package,
   MapPin,
+  Loader2,
 } from "lucide-react";
 import { Address } from "@/types/address";
+import { apiIniciarRuta, apiRegistrarIntentoEntrega } from "@/services/api";
+import type { IniciarRutaResponse } from "@/types/backend";
 
 interface RouteNavigationProps {
   addresses: Address[];
+  rutaId: number | null;
+  conductorId?: number;
   onBack: () => void;
   onComplete: (summary: {
     completed: Address[];
@@ -22,37 +27,157 @@ interface RouteNavigationProps {
 
 export function RouteNavigation({
   addresses,
+  rutaId,
+  conductorId,
   onBack,
   onComplete,
 }: RouteNavigationProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [completed, setCompleted] = useState<Address[]>([]);
-  const [failed, setFailed] = useState<Address[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  // Usar un Map para mantener el estado de cada dirección por su ID, preservando el orden del backend
+  const [deliveryStatus, setDeliveryStatus] = useState<Map<string, 'completed' | 'failed'>>(new Map());
+  // Mapa de direcciones a ruta_entrega_id usando coordenadas como clave
+  const [addressToRutaEntregaId, setAddressToRutaEntregaId] = useState<Map<string, number>>(new Map());
 
   const current = addresses[currentIndex];
 
-  const handleComplete = (success: boolean) => {
-    const updatedCompleted = success ? [...completed, current] : completed;
-    const updatedFailed = !success ? [...failed, current] : failed;
+  // Iniciar la ruta cuando se monta el componente
+  useEffect(() => {
+    const initializeRoute = async () => {
+      if (!rutaId || !conductorId) {
+        setError("Faltan datos necesarios (rutaId o conductorId)");
+        setIsInitializing(false);
+        return;
+      }
 
-    const isLast = currentIndex >= addresses.length - 1;
+      try {
+        setIsInitializing(true);
+        console.log("🚀 Iniciando ruta:", { rutaId, conductorId });
+        const response: IniciarRutaResponse = await apiIniciarRuta({
+          ruta_id: rutaId,
+          conductor_id: conductorId,
+        });
 
-    if (!isLast) {
-      setCompleted(updatedCompleted);
-      setFailed(updatedFailed);
-      setCurrentIndex((i) => i + 1);
-    } else {
-      const finalSummary = {
-        completed: updatedCompleted,
-        failed: updatedFailed,
-        date: new Date().toLocaleString("es-AR"),
-      };
+        console.log("✅ Ruta iniciada:", response);
 
-      setCompleted(updatedCompleted);
-      setFailed(updatedFailed);
-      onComplete(finalSummary);
+        // Crear mapa de direcciones a ruta_entrega_id usando coordenadas
+        const addressMap = new Map<string, number>();
+        response.entregas_creadas.forEach((entrega) => {
+          // Usar coordenadas como clave para mapear
+          const key = `${entrega.latitud.toFixed(5)}_${entrega.longitud.toFixed(5)}`;
+          addressMap.set(key, entrega.ruta_entrega_id);
+        });
+
+        setAddressToRutaEntregaId(addressMap);
+        setIsInitializing(false);
+      } catch (err: any) {
+        console.error("❌ Error al iniciar la ruta:", err);
+        setError(err.message || "Error al iniciar la ruta");
+        setIsInitializing(false);
+      }
+    };
+
+    initializeRoute();
+  }, [rutaId, conductorId]);
+
+  const handleComplete = async (success: boolean) => {
+    if (!conductorId || !current.coordinates) {
+      alert("Faltan datos necesarios para registrar la entrega");
+      return;
+    }
+
+    // Obtener ruta_entrega_id usando las coordenadas
+    const key = `${current.coordinates.latitude.toFixed(5)}_${current.coordinates.longitude.toFixed(5)}`;
+    const rutaEntregaId = addressToRutaEntregaId.get(key);
+
+    if (!rutaEntregaId) {
+      console.error("❌ No se encontró ruta_entrega_id para la dirección:", current);
+      alert("Error: No se pudo encontrar la información de la entrega");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      
+      // Registrar el intento de entrega en el backend
+      await apiRegistrarIntentoEntrega({
+        ruta_entrega_id: rutaEntregaId,
+        conductor_id: conductorId,
+        nuevo_estado: success ? "completada" : "fallida",
+        motivo: success ? null : "Entrega fallida",
+        ubicacion_gps: current.coordinates ? {
+          lat: current.coordinates.latitude,
+          lng: current.coordinates.longitude,
+        } : null,
+      });
+
+      console.log(`✅ Entrega ${success ? 'completada' : 'fallida'} registrada en el backend`);
+
+      // Actualizar el estado de la entrega actual
+      const newStatus = new Map(deliveryStatus);
+      newStatus.set(current.id, success ? 'completed' : 'failed');
+      setDeliveryStatus(newStatus);
+
+      const isLast = currentIndex >= addresses.length - 1;
+
+      if (!isLast) {
+        setCurrentIndex((i) => i + 1);
+      } else {
+        // Al finalizar, construir los arrays manteniendo el orden del backend
+        const completed: Address[] = [];
+        const failed: Address[] = [];
+
+        // Recorrer las direcciones en el orden del backend (que ya viene ordenado)
+        addresses.forEach((addr) => {
+          const status = newStatus.get(addr.id);
+          if (status === 'completed') {
+            completed.push(addr);
+          } else if (status === 'failed') {
+            failed.push(addr);
+          }
+        });
+
+        const finalSummary = {
+          completed,
+          failed,
+          date: new Date().toLocaleString("es-AR"),
+        };
+
+        onComplete(finalSummary);
+      }
+    } catch (err: any) {
+      console.error("❌ Error al registrar la entrega:", err);
+      alert(err.message || "Error al registrar la entrega. Por favor, intenta nuevamente.");
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  if (isInitializing) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center">
+          <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+          <p className="text-muted-foreground">Iniciando ruta...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center">
+          <p className="text-red-600 mb-4">{error}</p>
+          <Button onClick={onBack} variant="outline">
+            Volver al mapa
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!addresses.length) {
     return (
@@ -105,19 +230,39 @@ export function RouteNavigation({
             <div className="flex flex-col gap-2 mt-4">
               <Button
                 onClick={() => handleComplete(true)}
+                disabled={isLoading}
                 className="w-full bg-green-600 hover:bg-green-700 text-white"
               >
-                <CheckCircle2 className="h-4 w-4 mr-2" />
-                Entrega completada
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Registrando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Entrega completada
+                  </>
+                )}
               </Button>
 
               <Button
                 onClick={() => handleComplete(false)}
+                disabled={isLoading}
                 className="w-full"
                 variant="destructive"
               >
-                <XCircle className="h-4 w-4 mr-2" />
-                Entrega fallida
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Registrando...
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Entrega fallida
+                  </>
+                )}
               </Button>
             </div>
           </div>
@@ -131,30 +276,45 @@ export function RouteNavigation({
       )}
 
       {/* Resumen parcial */}
-      {(completed.length > 0 || failed.length > 0) && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              Resumen del recorrido
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-1 text-sm">
-              {completed.map((a) => (
-                <li key={a.id} className="text-green-600">
-                  ✅ {a.street}
-                </li>
-              ))}
-              {failed.map((a) => (
-                <li key={a.id} className="text-red-600">
-                  ❌ {a.street}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
+      {deliveryStatus.size > 0 && (() => {
+        // Construir arrays temporales para el resumen, manteniendo el orden del backend
+        const completed: Address[] = [];
+        const failed: Address[] = [];
+
+        addresses.forEach((addr) => {
+          const status = deliveryStatus.get(addr.id);
+          if (status === 'completed') {
+            completed.push(addr);
+          } else if (status === 'failed') {
+            failed.push(addr);
+          }
+        });
+
+        return (completed.length > 0 || failed.length > 0) && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Resumen del recorrido
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-1 text-sm">
+                {completed.map((a) => (
+                  <li key={a.id} className="text-green-600">
+                    ✅ {a.street}
+                  </li>
+                ))}
+                {failed.map((a) => (
+                  <li key={a.id} className="text-red-600">
+                    ❌ {a.street}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        );
+      })()}
     </div>
   );
 }

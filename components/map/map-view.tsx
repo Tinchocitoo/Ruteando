@@ -15,9 +15,10 @@ import type {
 interface MapViewProps {
   addresses: Address[];
   onBack: () => void;
-  onStartRoute?: () => void;
+  onStartRoute?: (rutaId: number) => void;
+  onRouteCalculated?: (orderedAddresses: Address[], rutaId: number) => void;
   showRouteControls?: boolean;
-  direccionesBackend?: DireccionBackend[];
+  //direccionesBackend?: DireccionBackend[];
   conductorId?: number;
 }
 
@@ -33,11 +34,13 @@ export function MapView({
   addresses,
   onBack,
   onStartRoute,
+  onRouteCalculated,
   showRouteControls = true,
-  direccionesBackend = [],
+  //direccionesBackend = [],
   conductorId,
 }: MapViewProps) {
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+  const [direccionesBackend, setDireccionesBackend] = useState<DireccionBackend[]>([]);
   const [routeCalculated, setRouteCalculated] = useState(false);
   const [distance, setDistance] = useState("");
   const [duration, setDuration] = useState("");
@@ -143,20 +146,22 @@ export function MapView({
     map.fitBounds(bounds);
   };
 
-  // 🧮 Calcular ruta (incluyendo el origen)
   const handleCalculateRoute = async () => {
+  console.log('calculando')
+  setDireccionesBackend([]);
   setRouteCalculated(false);
   setRutaBackend(null);
   setDistance("");
   setDuration("");
   setIsCalculatingRoute(true);
+  // Limpiar direcciones ordenadas al empezar a calcular
+  onRouteCalculated?.([], 0);
 
     if (routePolylineRef.current) {
     routePolylineRef.current.setMap(null);
     routePolylineRef.current = null;
   }
     try {
-      // 🔹 Agregamos origen al principio
       const ORIGEN = { latitud: -34.1786414, longitud: -58.9624094 }; // UTN Campana, por ejemplo
 
       const payloadDirecciones: DireccionBackend[] = [
@@ -221,6 +226,54 @@ export function MapView({
       setDistance((resp.distancia_total_m / 1000).toFixed(1) + " km");
       setDuration(Math.round(resp.duracion_total_s / 60) + " min");
 
+      // Convertir direcciones ordenadas del backend a Address[]
+      const puntosOrdenados = [...resp.puntos_ruta].sort(
+        (a, b) => a.orden - b.orden
+      );
+      
+      // Crear un mapa de direcciones originales por coordenadas para preservar datos adicionales
+      const addressMap = new Map<string, Address>();
+      addresses.forEach((addr) => {
+        if (addr.coordinates) {
+          const key = `${addr.coordinates.latitude.toFixed(5)}_${addr.coordinates.longitude.toFixed(5)}`;
+          addressMap.set(key, addr);
+        }
+      });
+
+      // Convertir direcciones del backend ordenadas a Address[]
+      const orderedAddresses: Address[] = puntosOrdenados
+        .flatMap((punto) => punto.direcciones_fisicas)
+        .map((dir) => {
+          const key = `${dir.latitud.toFixed(5)}_${dir.longitud.toFixed(5)}`;
+          const originalAddr = addressMap.get(key);
+          
+          // Si encontramos la dirección original, usarla pero preservar el orden del backend
+          if (originalAddr) {
+            return originalAddr;
+          }
+          
+          // Si no, crear una nueva Address desde DireccionBackend
+          return {
+            id: `backend_${dir.id}`,
+            street: dir.texto_normalizado,
+            city: "", // El backend no siempre tiene ciudad separada
+            zipCode: undefined,
+            state: undefined,
+            country: undefined,
+            apartment: dir.depto || undefined,
+            floor: dir.piso || undefined,
+            coordinates: {
+              latitude: dir.latitud,
+              longitude: dir.longitud,
+            },
+          };
+        });
+
+      console.log("✅ Direcciones ordenadas del backend:", orderedAddresses);
+      
+      // Notificar al componente padre sobre las direcciones ordenadas y el ruta_id
+      onRouteCalculated?.(orderedAddresses, resp.ruta_id);
+
       console.log("✅ Ruta calculada y dibujada correctamente");
     } catch (e) {
       console.error("❌ Error al calcular la ruta:", e);
@@ -231,18 +284,23 @@ export function MapView({
   };
 
   // 🔁 Recalcular
-const handleRecalculateRoute = () => {
-  // 🧹 LIMPIEZA TOTAL DE RUTA ANTERIOR
+const handleRecalculateRoute = async () => {
+  console.log('REcalculando')
   setRouteCalculated(false);
   setRutaBackend(null);
   setDistance("");
   setDuration("");
+  setIsCalculatingRoute(true);
+  // Limpiar direcciones ordenadas cuando se recalcula
+  onRouteCalculated?.([], 0);
 
+  console.log("hay poliline",routePolylineRef)
   // 🧹 Eliminar polyline anterior
   if (routePolylineRef.current) {
     routePolylineRef.current.setMap(null);
     routePolylineRef.current = null;
   }
+  console.log("Modif", routePolylineRef)
 
   // 🧹 Reiniciar el mapa a su estado base
   if (mapInstanceRef.current) {
@@ -256,9 +314,7 @@ const handleRecalculateRoute = () => {
     });
   }
 
-  // 🧹 Si las direcciones provienen del backend o de un estado previo, podés limpiarlas aquí también:
-  // (solo si querés resetear totalmente)
-  // addresses.splice(0, addresses.length)
+  await handleCalculateRoute();
 };
 
 
@@ -272,13 +328,19 @@ const handleRecalculateRoute = () => {
     // Incluye también el origen
     const ORIGEN = { lat: -34.1786414, lng: -58.9624094 };
 
+    // Usar el orden del backend desde puntos_ruta (ordenados por 'orden')
+    const puntosOrdenados = [...rutaBackend.puntos_ruta].sort(
+      (a, b) => a.orden - b.orden
+    );
+
+    // Extraer coordenadas del backend en el orden correcto
     const coordsList = [
       ORIGEN,
-      ...addresses
-        .filter((a) => a.coordinates)
-        .map((a) => ({
-          lat: a.coordinates!.latitude,
-          lng: a.coordinates!.longitude,
+      ...puntosOrdenados
+        .flatMap((punto) => punto.direcciones_fisicas)
+        .map((dir) => ({
+          lat: dir.latitud,
+          lng: dir.longitud,
         })),
     ];
 
@@ -299,7 +361,10 @@ const handleRecalculateRoute = () => {
     console.log("🗺️ Abriendo ruta en Google Maps:", mapsUrl);
     window.open(mapsUrl, "_blank");
 
-    onStartRoute?.();
+    // Pasar el ruta_id al callback
+    if (rutaBackend) {
+      onStartRoute?.(rutaBackend.ruta_id);
+    }
   };
 
   return (

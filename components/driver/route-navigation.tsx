@@ -43,117 +43,131 @@ export function RouteNavigation({
 
   const current = addresses[currentIndex];
 
-  // Iniciar la ruta cuando se monta el componente
-  useEffect(() => {
-    const initializeRoute = async () => {
-      if (!rutaId || !conductorId) {
-        setError("Faltan datos necesarios (rutaId o conductorId)");
-        setIsInitializing(false);
-        return;
-      }
+  console.log("📋 Addresses en memoria:", addresses);
 
-      try {
-        setIsInitializing(true);
-        console.log("🚀 Iniciando ruta:", { rutaId, conductorId });
-        const response: IniciarRutaResponse = await apiIniciarRuta({
-          ruta_id: rutaId,
-          conductor_id: conductorId,
-        });
 
-        console.log("✅ Ruta iniciada:", response);
-
-        // Crear mapa de direcciones a ruta_entrega_id usando coordenadas
-        const addressMap = new Map<string, number>();
-        response.entregas_creadas.forEach((entrega) => {
-          // Usar coordenadas como clave para mapear
-          const key = `${entrega.latitud.toFixed(5)}_${entrega.longitud.toFixed(5)}`;
-          addressMap.set(key, entrega.ruta_entrega_id);
-        });
-
-        setAddressToRutaEntregaId(addressMap);
-        setIsInitializing(false);
-      } catch (err: any) {
-        console.error("❌ Error al iniciar la ruta:", err);
-        setError(err.message || "Error al iniciar la ruta");
-        setIsInitializing(false);
-      }
-    };
-
-    initializeRoute();
-  }, [rutaId, conductorId]);
-
-  const handleComplete = async (success: boolean) => {
-    if (!conductorId || !current.coordinates) {
-      alert("Faltan datos necesarios para registrar la entrega");
-      return;
-    }
-
-    // Obtener ruta_entrega_id usando las coordenadas
-    const key = `${current.coordinates.latitude.toFixed(5)}_${current.coordinates.longitude.toFixed(5)}`;
-    const rutaEntregaId = addressToRutaEntregaId.get(key);
-
-    if (!rutaEntregaId) {
-      console.error("❌ No se encontró ruta_entrega_id para la dirección:", current);
-      alert("Error: No se pudo encontrar la información de la entrega");
+// Iniciar la ruta cuando se monta el componente
+useEffect(() => {
+  const initializeRoute = async () => {
+    if (!rutaId || !conductorId) {
+      setError("Faltan datos necesarios (rutaId o conductorId)");
+      setIsInitializing(false);
       return;
     }
 
     try {
-      setIsLoading(true);
-      
-      // Registrar el intento de entrega en el backend
-      await apiRegistrarIntentoEntrega({
-        ruta_entrega_id: rutaEntregaId,
+      setIsInitializing(true);
+      console.log("🚀 Iniciando ruta:", { rutaId, conductorId });
+
+      const response: IniciarRutaResponse = await apiIniciarRuta({
+        ruta_id: rutaId,
         conductor_id: conductorId,
-        nuevo_estado: success ? "completada" : "fallida",
-        motivo: success ? null : "Entrega fallida",
-        ubicacion_gps: current.coordinates ? {
-          lat: current.coordinates.latitude,
-          lng: current.coordinates.longitude,
-        } : null,
       });
 
-      console.log(`✅ Entrega ${success ? 'completada' : 'fallida'} registrada en el backend`);
+      console.log("✅ Ruta iniciada:", response);
+      console.log("📦 entregas_creadas RAW:", response.entregas_creadas);
 
-      // Actualizar el estado de la entrega actual
-      const newStatus = new Map(deliveryStatus);
-      newStatus.set(current.id, success ? 'completed' : 'failed');
-      setDeliveryStatus(newStatus);
+      // 🧭 Mapa hash_geoloc → ruta_entrega_id
+      const entregaMap = new Map<string, number>();
 
-      const isLast = currentIndex >= addresses.length - 1;
+      (response.entregas_creadas || []).forEach((entrega) => {
+        if (entrega.hash_geoloc) {
+          entregaMap.set(entrega.hash_geoloc, entrega.ruta_entrega_id);
+        }
+      });
 
-      if (!isLast) {
-        setCurrentIndex((i) => i + 1);
-      } else {
-        // Al finalizar, construir los arrays manteniendo el orden del backend
-        const completed: Address[] = [];
-        const failed: Address[] = [];
+      console.log(
+        "📦 Mapa entregaMap (hash_geoloc → ruta_entrega_id):",
+        Array.from(entregaMap.entries())
+      );
 
-        // Recorrer las direcciones en el orden del backend (que ya viene ordenado)
-        addresses.forEach((addr) => {
-          const status = newStatus.get(addr.id);
-          if (status === 'completed') {
-            completed.push(addr);
-          } else if (status === 'failed') {
-            failed.push(addr);
-          }
-        });
-
-        const finalSummary = {
-          completed,
-          failed,
-          date: new Date().toLocaleString("es-AR"),
-        };
-
-        onComplete(finalSummary);
-      }
+      setAddressToRutaEntregaId(entregaMap);
+      setIsInitializing(false);
     } catch (err: any) {
-      console.error("❌ Error al registrar la entrega:", err);
-      alert(err.message || "Error al registrar la entrega. Por favor, intenta nuevamente.");
-    } finally {
-      setIsLoading(false);
+      console.error("❌ Error al iniciar la ruta:", err);
+      setError(err.message || "Error al iniciar la ruta");
+      setIsInitializing(false);
     }
   };
+
+  initializeRoute();
+}, [rutaId, conductorId]);
+const handleComplete = async (success: boolean) => {
+  if (!conductorId || !current.coordinates) {
+    alert("Faltan datos necesarios para registrar la entrega");
+    return;
+  }
+
+  // 🧩 Usar hash_geoloc del objeto actual
+  const key = current.hash_geoloc;
+  const rutaEntregaId = key ? addressToRutaEntregaId.get(key) : undefined;
+
+  console.log("📍 current.hash_geoloc:", key);
+  console.log("🔗 rutaEntregaId encontrado:", rutaEntregaId);
+  console.log("🗺️ Mapa actual:", Array.from(addressToRutaEntregaId.entries()));
+
+  if (!rutaEntregaId) {
+    console.error("❌ No se encontró ruta_entrega_id para la dirección:", current);
+    alert("Error: No se pudo encontrar la información de la entrega");
+    return;
+  }
+
+  try {
+    setIsLoading(true);
+
+    await apiRegistrarIntentoEntrega({
+      ruta_entrega_id: rutaEntregaId,
+      conductor_id: conductorId,
+      nuevo_estado: success ? "completada" : "fallida",
+      motivo: success ? null : "Entrega fallida",
+      ubicacion_gps: current.coordinates
+        ? {
+            lat: current.coordinates.latitude,
+            lng: current.coordinates.longitude,
+          }
+        : null,
+    });
+
+    console.log(
+      `✅ Entrega ${success ? "completada" : "fallida"} registrada en el backend`
+    );
+
+    const newStatus = new Map(deliveryStatus);
+    newStatus.set(current.id, success ? "completed" : "failed");
+    setDeliveryStatus(newStatus);
+
+    const isLast = currentIndex >= addresses.length - 1;
+    if (!isLast) {
+      setCurrentIndex((i) => i + 1);
+    } else {
+      const completed: Address[] = [];
+      const failed: Address[] = [];
+
+      addresses.forEach((addr) => {
+        const status = newStatus.get(addr.id);
+        if (status === "completed") completed.push(addr);
+        else if (status === "failed") failed.push(addr);
+      });
+
+      const finalSummary = {
+        completed,
+        failed,
+        date: new Date().toLocaleString("es-AR"),
+      };
+
+      onComplete(finalSummary);
+    }
+  } catch (err: any) {
+    console.error("❌ Error al registrar la entrega:", err);
+    alert(
+      err.message ||
+        "Error al registrar la entrega. Por favor, intenta nuevamente."
+    );
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   if (isInitializing) {
     return (

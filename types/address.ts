@@ -9,4 +9,5 @@ export interface Address {
   apartment?: string
   floor?: string
   coordinates?: { latitude: number; longitude: number }
+  hash_geoloc?: string;
 }

@@ -72,6 +72,30 @@ export default function Page() {
     } catch {}
   }, [direccionesBackend])
 
+  // 🧩 Sincroniza direcciones del backend con las del front (para incluir hash_geoloc)
+  useEffect(() => {
+    if (!direccionesBackend.length) return;
+
+    const backendAddresses: Address[] = direccionesBackend.map((d: any) => ({
+      id: String(d.id),
+      street: d.texto_normalizado,
+      city: "",
+      coordinates: {
+        latitude: d.latitud,
+        longitude: d.longitud,
+      },
+      hash_geoloc: d.hash_geoloc, // ✅ ya viene del backend
+      apartment: d.depto ?? "",
+      floor: d.piso ?? "",
+      zipCode: "",
+      country: "Argentina",
+    }));
+
+    console.log("🧩 Sincronizando addresses con hash:", backendAddresses);
+    setAddresses(backendAddresses);
+  }, [direccionesBackend]);
+
+
   // --- Navegación global ---
   const handleViewMap = () => setCurrentView("map-view")
   const handleHomeClick = () => setCurrentView("dashboard")
@@ -138,6 +162,22 @@ export default function Page() {
 
       const data = await response.json()
       console.log("Direcciones procesadas por el backend:", data)
+      const backendAddresses: Address[] = data.direcciones.map((d: any) => ({
+        id: String(d.id),
+        street: d.texto_normalizado,
+        city: "", // el backend no manda ciudad separada
+        coordinates: {
+          latitude: d.latitud,
+          longitude: d.longitud,
+        },
+        hash_geoloc: d.hash_geoloc, // ✅ este es el que necesitás
+        apartment: d.depto ?? "",
+        floor: d.piso ?? "",
+        zipCode: "",
+        country: "Argentina",
+      }));
+      
+      setAddresses(backendAddresses);
       setDireccionesBackend(data.direcciones)
       setCurrentView("map-view")
     } catch (err) {

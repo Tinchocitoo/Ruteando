@@ -193,9 +193,7 @@ export function MapView({
                 piso: a.floor ?? null,
                 depto: a.apartment ?? null,
                 hash_direccion: `dir_${idx + 1}`,
-                hash_geoloc: `geo_${a.coordinates!.latitude.toFixed(
-                  5
-                )}_${a.coordinates!.longitude.toFixed(5)}`,
+                hash_geoloc: a.hash_geoloc || `geo_${a.coordinates!.latitude.toFixed(5)}_${a.coordinates!.longitude.toFixed(5)}`,
                 cantidad_paquetes: 1,
               }))),
       ];

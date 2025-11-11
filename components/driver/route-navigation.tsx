@@ -25,6 +25,18 @@ interface RouteNavigationProps {
   }) => void;
 }
 
+// Item de entrega individual devuelto por IniciarRuta
+type DeliveryItem = {
+  ruta_entrega_id: number;
+  entrega_id: number;
+  direccion_id: number;
+  estado: string;
+  latitud: number | null;
+  longitud: number | null;
+  texto_normalizado: string;
+  hash_geoloc: string | null;
+};
+
 export function RouteNavigation({
   addresses,
   rutaId,
@@ -32,162 +44,137 @@ export function RouteNavigation({
   onBack,
   onComplete,
 }: RouteNavigationProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Usar un Map para mantener el estado de cada dirección por su ID, preservando el orden del backend
-  const [deliveryStatus, setDeliveryStatus] = useState<Map<string, 'completed' | 'failed'>>(new Map());
-  // Mapa de direcciones a ruta_entrega_id usando coordenadas como clave
-  const [addressToRutaEntregaId, setAddressToRutaEntregaId] = useState<Map<string, number>>(new Map());
 
-  const current = addresses[currentIndex];
+  // Lista de entregas individuales que viene del backend
+  const [deliveries, setDeliveries] = useState<DeliveryItem[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
 
-  console.log("📋 Addresses en memoria:", addresses);
+  // Estado por dirección (clave = direccion_id como string)
+  const [deliveryStatus, setDeliveryStatus] = useState<
+    Map<string, "completed" | "failed">
+  >(new Map());
 
+  const currentDelivery = deliveries[currentIndex] || null;
+  const currentAddress: Address | null =
+    currentDelivery
+      ? addresses.find(
+          (a) => String(a.id) === String(currentDelivery.direccion_id)
+        ) || null
+      : null;
 
-// Iniciar la ruta cuando se monta el componente
-useEffect(() => {
-  const initializeRoute = async () => {
-    if (!rutaId || !conductorId) {
-      setError("Faltan datos necesarios (rutaId o conductorId)");
-      setIsInitializing(false);
+  useEffect(() => {
+    const initializeRoute = async () => {
+      if (!rutaId || !conductorId) {
+        setError("Faltan datos necesarios (rutaId o conductorId)");
+        setIsInitializing(false);
+        return;
+      }
+
+      try {
+        setIsInitializing(true);
+        console.log("🚀 Iniciando ruta:", { rutaId, conductorId });
+
+        const response: IniciarRutaResponse = await apiIniciarRuta({
+          ruta_id: rutaId,
+          conductor_id: conductorId,
+        });
+
+        console.log("✅ Ruta iniciada:", response);
+        console.log("📦 entregas_creadas:", response.entregas_creadas);
+
+        const creadas = (response.entregas_creadas || []) as any[];
+        const mapped: DeliveryItem[] = creadas.map((e) => ({
+          ruta_entrega_id: e.ruta_entrega_id,
+          entrega_id: e.entrega_id,
+          direccion_id: e.direccion_id,
+          estado: e.estado,
+          latitud: e.latitud ?? null,
+          longitud: e.longitud ?? null,
+          texto_normalizado: e.texto_normalizado ?? "",
+          hash_geoloc: e.hash_geoloc ?? null,
+        }));
+
+        setDeliveries(mapped);
+        setCurrentIndex(0);
+        setIsInitializing(false);
+      } catch (err: any) {
+        console.error("❌ Error al iniciar la ruta:", err);
+        setError(err.message || "Error al iniciar la ruta");
+        setIsInitializing(false);
+      }
+    };
+
+    initializeRoute();
+  }, [rutaId, conductorId]);
+
+  const handleComplete = async (success: boolean) => {
+    if (!conductorId || !currentDelivery) {
+      alert("Faltan datos necesarios para registrar la entrega");
       return;
     }
 
     try {
-      setIsInitializing(true);
-      console.log("🚀 Iniciando ruta:", { rutaId, conductorId });
+      setIsLoading(true);
 
-      const response: IniciarRutaResponse = await apiIniciarRuta({
-        ruta_id: rutaId,
+      await apiRegistrarIntentoEntrega({
+        ruta_entrega_id: currentDelivery.ruta_entrega_id,
         conductor_id: conductorId,
+        nuevo_estado: success ? "completada" : "fallida",
+        motivo: success ? null : "Entrega fallida",
+        ubicacion_gps:
+          currentDelivery.latitud != null && currentDelivery.longitud != null
+            ? { lat: currentDelivery.latitud, lng: currentDelivery.longitud }
+            : null,
       });
 
-      console.log("✅ Ruta iniciada:", response);
-      console.log("📦 entregas_creadas RAW:", response.entregas_creadas);
+      console.log(
+        `✅ Entrega ${success ? "completada" : "fallida"} registrada correctamente (ruta_entrega_id=${currentDelivery.ruta_entrega_id})`
+      );
 
-      // 🧭 Mapa hash_geoloc → ruta_entrega_id
-      const entregaMap = new Map<string, number>();
+      // Marcar estado por direccion_id (clave string para evitar mismatch)
+      const nextStatus = new Map(deliveryStatus);
+      nextStatus.set(
+        String(currentDelivery.direccion_id),
+        success ? "completed" : "failed"
+      );
+      setDeliveryStatus(nextStatus);
 
-      (response.entregas_creadas || []).forEach((entrega: any) => {
-        const hash = entrega.hash_geoloc ?? "";
-      
-        // 🧠 Si el backend NO envía floor/apartment, no los concatenamos
-        const floor = entrega.floor ?? "";
-        const apartment = entrega.apartment ?? "";
-        const hasSublevel = floor || apartment;
-      
-        const composedKey = hasSublevel
-          ? `${hash}_${floor}_${apartment}`.trim()
-          : hash; // fallback: usar solo hash si el backend no manda subniveles
-      
-        entregaMap.set(composedKey, entrega.ruta_entrega_id);
-      
-        // Fallback por coordenadas (por si alguna dirección no tiene hash)
-        if (typeof entrega.latitud === "number" && typeof entrega.longitud === "number") {
-          const keys = [5, 4, 3].map(
-            (p) => `${entrega.latitud.toFixed(p)}_${entrega.longitud.toFixed(p)}`
-          );
-          keys.forEach((k) => entregaMap.set(k, entrega.ruta_entrega_id));
-        }
-      });
-      
-      console.log("📦 Claves entregaMap:", Array.from(entregaMap.keys()));
-      setAddressToRutaEntregaId(entregaMap);
-      setIsInitializing(false);
+      // Avanzar al siguiente delivery
+      const isLast = currentIndex >= deliveries.length - 1;
+      if (!isLast) {
+        setCurrentIndex((i) => i + 1);
+      } else {
+        // Resumen: mapear estados (por direccion_id) a las addresses de UI
+        const completed: Address[] = [];
+        const failed: Address[] = [];
+
+        addresses.forEach((addr) => {
+          const status = nextStatus.get(String(addr.id));
+          if (status === "completed") completed.push(addr);
+          else if (status === "failed") failed.push(addr);
+        });
+
+        const finalSummary = {
+          completed,
+          failed,
+          date: new Date().toLocaleString("es-AR"),
+        };
+
+        onComplete(finalSummary);
+      }
     } catch (err: any) {
-      console.error("❌ Error al iniciar la ruta:", err);
-      setError(err.message || "Error al iniciar la ruta");
-      setIsInitializing(false);
+      console.error("❌ Error al registrar la entrega:", err);
+      alert(
+        err.message ||
+          "Error al registrar la entrega. Por favor, intenta nuevamente."
+      );
+    } finally {
+      setIsLoading(false);
     }
   };
-
-  initializeRoute();
-}, [rutaId, conductorId]);
-
-const handleComplete = async (success: boolean) => {
-  if (!conductorId || !current.coordinates) {
-    alert("Faltan datos necesarios para registrar la entrega");
-    return;
-  }
-
- // 🧩 NUEVO: Clave compuesta para distinguir pisos/deptos del mismo edificio
- const key = `${current.hash_geoloc}_${current.floor ?? ""}_${current.apartment ?? ""}`.trim();
- let rutaEntregaId = addressToRutaEntregaId.get(key);
-
-// Fallback opcional: si no lo encuentra, probar con hash solo
-  if (!rutaEntregaId && current.hash_geoloc) {
-    rutaEntregaId = addressToRutaEntregaId.get(current.hash_geoloc);
-  }
-
-
-  console.log("📍 current.hash_geoloc:", key);
-  console.log("🔗 rutaEntregaId encontrado:", rutaEntregaId);
-  console.log("🗺️ Mapa actual:", Array.from(addressToRutaEntregaId.entries()));
-
-  if (!rutaEntregaId) {
-    console.error("❌ No se encontró ruta_entrega_id para la dirección:", current);
-    alert("Error: No se pudo encontrar la información de la entrega");
-    return;
-  }
-
-  try {
-    setIsLoading(true);
-
-    await apiRegistrarIntentoEntrega({
-      ruta_entrega_id: rutaEntregaId,
-      conductor_id: conductorId,
-      nuevo_estado: success ? "completada" : "fallida",
-      motivo: success ? null : "Entrega fallida",
-      ubicacion_gps: current.coordinates
-        ? {
-            lat: current.coordinates.latitude,
-            lng: current.coordinates.longitude,
-          }
-        : null,
-    });
-
-    console.log(
-      `✅ Entrega ${success ? "completada" : "fallida"} registrada en el backend`
-    );
-
-    const newStatus = new Map(deliveryStatus);
-    newStatus.set(current.id, success ? "completed" : "failed");
-    setDeliveryStatus(newStatus);
-
-    const isLast = currentIndex >= addresses.length - 1;
-    if (!isLast) {
-      setCurrentIndex((i) => i + 1);
-    } else {
-      const completed: Address[] = [];
-      const failed: Address[] = [];
-
-      addresses.forEach((addr) => {
-        const status = newStatus.get(addr.id);
-        if (status === "completed") completed.push(addr);
-        else if (status === "failed") failed.push(addr);
-      });
-
-      const finalSummary = {
-        completed,
-        failed,
-        date: new Date().toLocaleString("es-AR"),
-      };
-
-      onComplete(finalSummary);
-    }
-  } catch (err: any) {
-    console.error("❌ Error al registrar la entrega:", err);
-    alert(
-      err.message ||
-        "Error al registrar la entrega. Por favor, intenta nuevamente."
-    );
-  } finally {
-    setIsLoading(false);
-  }
-};
-
 
   if (isInitializing) {
     return (
@@ -213,19 +200,21 @@ const handleComplete = async (success: boolean) => {
     );
   }
 
-  if (!addresses.length) {
+  if (!deliveries.length) {
     return (
       <Card>
         <CardContent className="p-6 text-center text-muted-foreground">
-          No hay direcciones para navegar.
+          No hay entregas para navegar.
         </CardContent>
       </Card>
     );
   }
 
-  // Detectar si hay fallidas para permitir reintentos rápidos
-  const firstFailedIndex = addresses.findIndex((a) => deliveryStatus.get(a.id) === 'failed');
-  const hasFailures = firstFailedIndex >= 0;
+  // Hallar primer address fallida (para "Reintentar")
+  const firstFailedAddress = addresses.find(
+    (a) => deliveryStatus.get(String(a.id)) === "failed"
+  );
+  const hasFailures = Boolean(firstFailedAddress);
 
   return (
     <div className="space-y-6">
@@ -238,12 +227,12 @@ const handleComplete = async (success: boolean) => {
         <div>
           <h1 className="text-xl font-bold">Confirmar Entregas</h1>
           <p className="text-sm text-muted-foreground">
-            {currentIndex + 1} de {addresses.length} direcciones
+            {currentIndex + 1} de {deliveries.length} entregas
           </p>
         </div>
       </div>
 
-      {/* Dirección actual */}
+      {/* Entrega actual */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -253,14 +242,17 @@ const handleComplete = async (success: boolean) => {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            <p className="font-medium">{current.street}</p>
-            <p className="text-sm text-muted-foreground">
-              {current.city}
-              {current.zipCode && ` (${current.zipCode})`}
+            {/* Título/dirección amigable */}
+            <p className="font-medium">
+              {currentAddress?.street || currentDelivery?.texto_normalizado}
             </p>
-            {current.floor && current.apartment && (
+            <p className="text-sm text-muted-foreground">
+              {currentAddress?.city}
+              {currentAddress?.zipCode && ` (${currentAddress.zipCode})`}
+            </p>
+            {currentAddress?.floor && currentAddress?.apartment && (
               <p className="text-sm italic text-muted-foreground">
-                Piso {current.floor}, Depto {current.apartment}
+                Piso {currentAddress.floor}, Depto {currentAddress.apartment}
               </p>
             )}
 
@@ -307,62 +299,70 @@ const handleComplete = async (success: boolean) => {
         </CardContent>
       </Card>
 
-      {currentIndex === addresses.length - 1 && (
+      {currentIndex === deliveries.length - 1 && (
         <p className="mt-4 text-center text-sm text-green-600 font-medium">
           Última entrega — guardando recorrido…
         </p>
       )}
 
       {/* Resumen parcial */}
-      {deliveryStatus.size > 0 && (() => {
-        // Construir arrays temporales para el resumen, manteniendo el orden del backend
-        const completed: Address[] = [];
-        const failed: Address[] = [];
+      {deliveryStatus.size > 0 &&
+        (() => {
+          const completed: Address[] = [];
+          const failed: Address[] = [];
 
-        addresses.forEach((addr) => {
-          const status = deliveryStatus.get(addr.id);
-          if (status === 'completed') {
-            completed.push(addr);
-          } else if (status === 'failed') {
-            failed.push(addr);
-          }
-        });
+          addresses.forEach((addr) => {
+            const status = deliveryStatus.get(String(addr.id));
+            if (status === "completed") completed.push(addr);
+            else if (status === "failed") failed.push(addr);
+          });
 
-        return (completed.length > 0 || failed.length > 0) && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Resumen del recorrido
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="space-y-1 text-sm">
-                {completed.map((a) => (
-                  <li key={a.id} className="text-green-600">
-                    ✅ {a.street}
-                  </li>
-                ))}
-                {failed.map((a) => (
-                  <li key={a.id} className="text-red-600">
-                    ❌ {a.street}
-                  </li>
-                ))}
-              </ul>
-            </CardContent>
-          </Card>
-        );
-      })()}
+          return (completed.length > 0 || failed.length > 0) && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5" />
+                  Resumen del recorrido
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-1 text-sm">
+                  {completed.map((a) => (
+                    <li key={String(a.id)} className="text-green-600">
+                      ✅ {a.street}
+                    </li>
+                  ))}
+                  {failed.map((a) => (
+                    <li key={String(a.id)} className="text-red-600">
+                      ❌ {a.street}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
-      {hasFailures && (
+      {hasFailures && firstFailedAddress && (
         <div className="flex justify-center">
-          <Button variant="outline" onClick={() => {
-            const failedAddr = addresses[firstFailedIndex];
-            const next = new Map(deliveryStatus);
-            next.delete(failedAddr.id);
-            setDeliveryStatus(next);
-            setCurrentIndex(firstFailedIndex);
-          }}>
+          <Button
+            variant="outline"
+            onClick={() => {
+              // Ir a la primera entrega cuyo direccion_id coincide con la primera address fallida
+              const failedId = String(firstFailedAddress.id);
+              const targetIndex = deliveries.findIndex(
+                (d) => String(d.direccion_id) === failedId
+              );
+
+              const next = new Map(deliveryStatus);
+              next.delete(failedId); // permitir reintentar
+              setDeliveryStatus(next);
+
+              if (targetIndex >= 0) {
+                setCurrentIndex(targetIndex);
+              }
+            }}
+          >
             Reintentar fallidas
           </Button>
         </div>

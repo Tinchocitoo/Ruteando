@@ -31,7 +31,7 @@ export default function Page() {
   const [orderedRouteAddresses, setOrderedRouteAddresses] = useState<Address[]>([])
   const [currentRutaId, setCurrentRutaId] = useState<number | null>(null)
   const [deliveries, setDeliveries] = useState<any[]>([])
-  const [conductorId] = useState<number>(45)
+  const [conductorId] = useState<number>(Number(process.env.NEXT_PUBLIC_CONDUCTOR_ID) || 1)
 
   // 🧠 Carga inicial
   useEffect(() => {

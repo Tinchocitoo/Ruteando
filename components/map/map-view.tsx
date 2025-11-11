@@ -18,7 +18,7 @@ interface MapViewProps {
   onStartRoute?: (rutaId: number) => void;
   onRouteCalculated?: (orderedAddresses: Address[], rutaId: number) => void;
   showRouteControls?: boolean;
-  //direccionesBackend?: DireccionBackend[];
+  direccionesBackend?: DireccionBackend[];
   conductorId?: number;
 }
 
@@ -36,11 +36,10 @@ export function MapView({
   onStartRoute,
   onRouteCalculated,
   showRouteControls = true,
-  //direccionesBackend = [],
+  direccionesBackend = [],
   conductorId,
 }: MapViewProps) {
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
-  const [direccionesBackend, setDireccionesBackend] = useState<DireccionBackend[]>([]);
   const [routeCalculated, setRouteCalculated] = useState(false);
   const [distance, setDistance] = useState("");
   const [duration, setDuration] = useState("");
@@ -148,7 +147,6 @@ export function MapView({
 
   const handleCalculateRoute = async () => {
   console.log('calculando')
-  setDireccionesBackend([]);
   setRouteCalculated(false);
   setRutaBackend(null);
   setDistance("");
@@ -241,13 +239,23 @@ export function MapView({
       // Convertir direcciones del backend ordenadas a Address[]
       const orderedAddresses: Address[] = puntosOrdenados
         .flatMap((punto) => punto.direcciones_fisicas)
+        // Excluir el ORIGEN u otros puntos sin entrega (paquetes 0)
+        .filter((dir) => {
+          const isOriginId = (dir as any).id === 0;
+          const isOriginText = typeof (dir as any).texto_normalizado === 'string' && (dir as any).texto_normalizado.toLowerCase().includes('origen');
+          const hasPackages = (dir as any).cantidad_paquetes === undefined || (dir as any).cantidad_paquetes > 0;
+          return !isOriginId && !isOriginText && hasPackages;
+        })
         .map((dir) => {
           const key = `${dir.latitud.toFixed(5)}_${dir.longitud.toFixed(5)}`;
           const originalAddr = addressMap.get(key);
           
           // Si encontramos la dirección original, usarla pero preservar el orden del backend
           if (originalAddr) {
-            return originalAddr;
+            return {
+              ...originalAddr,
+              hash_geoloc: (dir as any).hash_geoloc || originalAddr.hash_geoloc,
+            };
           }
           
           // Si no, crear una nueva Address desde DireccionBackend
@@ -264,6 +272,7 @@ export function MapView({
               latitude: dir.latitud,
               longitude: dir.longitud,
             },
+            hash_geoloc: (dir as any).hash_geoloc,
           };
         });
 

@@ -70,9 +70,13 @@ useEffect(() => {
       // 🧭 Mapa hash_geoloc → ruta_entrega_id
       const entregaMap = new Map<string, number>();
 
-      (response.entregas_creadas || []).forEach((entrega) => {
+      (response.entregas_creadas || []).forEach((entrega: any) => {
         if (entrega.hash_geoloc) {
           entregaMap.set(entrega.hash_geoloc, entrega.ruta_entrega_id);
+        }
+        if (typeof entrega.latitud === 'number' && typeof entrega.longitud === 'number') {
+          const coordKey = `${entrega.latitud.toFixed(5)}_${entrega.longitud.toFixed(5)}`;
+          entregaMap.set(coordKey, entrega.ruta_entrega_id);
         }
       });
 
@@ -100,7 +104,11 @@ const handleComplete = async (success: boolean) => {
 
   // 🧩 Usar hash_geoloc del objeto actual
   const key = current.hash_geoloc;
-  const rutaEntregaId = key ? addressToRutaEntregaId.get(key) : undefined;
+  let rutaEntregaId = key ? addressToRutaEntregaId.get(key) : undefined;
+  if (!rutaEntregaId && current.coordinates) {
+    const coordKey = `${current.coordinates.latitude.toFixed(5)}_${current.coordinates.longitude.toFixed(5)}`;
+    rutaEntregaId = addressToRutaEntregaId.get(coordKey);
+  }
 
   console.log("📍 current.hash_geoloc:", key);
   console.log("🔗 rutaEntregaId encontrado:", rutaEntregaId);

@@ -87,7 +87,29 @@ export type IniciarRutaResponse = {
   duracion_total_s: number
   entregas_creadas: Array<{
     id_entrega: number
+    ruta_entrega_id: number
     direccion: string
     cantidad_paquetes: number
+    hash_geoloc: string
+    latitud: number
+    longitud: number
   }>
+}
+
+export type RegistrarIntentoEntregaRequest = {
+  ruta_entrega_id: number
+  conductor_id: number
+  nuevo_estado: "completada" | "fallida"
+  motivo?: string | null
+  ubicacion_gps?: { lat: number; lng: number } | null
+  adjuntos_json?: Record<string, any> | null
+}
+
+export type RegistrarIntentoEntregaResponse = {
+  mensaje: string
+  entrega_id: number
+  nuevo_estado: string
+  ruta_entrega_id: number
+  estado_ruta: string
+  fecha_intento: string
 }

@@ -7,6 +7,9 @@ import {
   CalcularRutaResponse,
   IniciarRutaRequest,
   IniciarRutaResponse,
+  RegistrarIntentoEntregaRequest,
+  RegistrarIntentoEntregaResponse,
+  DireccionBackend,
 } from "@/types/backend"
 
 /* ==========================
@@ -110,5 +113,30 @@ export function apiIniciarRuta(payload: IniciarRutaRequest) {
   return http<IniciarRutaResponse>("/api/entregas/iniciar_ruta/", {
     method: "POST",
     body: JSON.stringify(payload),
+  })
+}
+
+// ✅ Registrar intento de entrega (completada o fallida)
+export function apiRegistrarIntentoEntrega(payload: RegistrarIntentoEntregaRequest) {
+  return http<RegistrarIntentoEntregaResponse>("/api/entregas/registrar_intento/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+// Direcciones: actualizar
+export function apiActualizarDireccion(id: number, payload: Partial<DireccionBackend> & {
+  address?: any; floor?: string | null; apartment?: string | null; packages?: number;
+}) {
+  return http<DireccionBackend>(`/api/direcciones/${id}/`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
+// Direcciones: eliminar
+export function apiEliminarDireccion(id: number) {
+  return http<{ mensaje: string }>(`/api/direcciones/${id}/`, {
+    method: "DELETE",
   })
 }

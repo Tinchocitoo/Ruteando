@@ -28,8 +28,10 @@ export default function Page() {
 
   const [addresses, setAddresses] = useState<Address[]>([])
   const [direccionesBackend, setDireccionesBackend] = useState<DireccionBackend[]>([])
+  const [orderedRouteAddresses, setOrderedRouteAddresses] = useState<Address[]>([])
+  const [currentRutaId, setCurrentRutaId] = useState<number | null>(null)
   const [deliveries, setDeliveries] = useState<any[]>([])
-  const [conductorId] = useState<number>(45)
+  const [conductorId] = useState<number>(Number(process.env.NEXT_PUBLIC_CONDUCTOR_ID) || 1)
 
   // 🧠 Carga inicial
   useEffect(() => {
@@ -70,15 +72,63 @@ export default function Page() {
     } catch {}
   }, [direccionesBackend])
 
+  // 🧩 Sincroniza direcciones del backend con las del front (para incluir hash_geoloc)
+  useEffect(() => {
+    if (!direccionesBackend.length) return;
+
+    const backendAddresses: Address[] = direccionesBackend.map((d: any) => ({
+      id: String(d.id),
+      street: d.texto_normalizado,
+      city: "",
+      coordinates: {
+        latitude: d.latitud,
+        longitude: d.longitud,
+      },
+      hash_geoloc: d.hash_geoloc, // ✅ ya viene del backend
+      apartment: d.depto ?? "",
+      floor: d.piso ?? "",
+      zipCode: "",
+      country: "Argentina",
+    }));
+
+    console.log("🧩 Sincronizando addresses con hash:", backendAddresses);
+    setAddresses(backendAddresses);
+  }, [direccionesBackend]);
+
+
   // --- Navegación global ---
   const handleViewMap = () => setCurrentView("map-view")
   const handleHomeClick = () => setCurrentView("dashboard")
   const handleHistoryClick = () => setCurrentView("history")
   const handleSettingsClick = () => setCurrentView("settings")
-  const handleStartRoute = () => setCurrentView("route-navigation")
+  const handleStartRoute = (rutaId: number) => {
+    setCurrentRutaId(rutaId)
+    setCurrentView("route-navigation")
+  }
+  const handleRouteCalculated = (orderedAddresses: Address[], rutaId: number) => {
+    setOrderedRouteAddresses(orderedAddresses)
+    setCurrentRutaId(rutaId)
+  }
 
   const handleRouteComplete = (summary: { completed: Address[]; failed: Address[]; date: string }) => {
     setDeliveries((prev) => [...prev, summary])
+    setCurrentView("dashboard")
+  }
+  
+  // Limpiar datos locales de la sesión actual y almacenamiento
+  const handleClearSession = () => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("ruteando.addresses")
+        localStorage.removeItem("ruteando.backend.addresses")
+        localStorage.removeItem("ruteando.history")
+      }
+    } catch {}
+    setAddresses([])
+    setDireccionesBackend([])
+    setOrderedRouteAddresses([])
+    setDeliveries([])
+    setCurrentRutaId(null)
     setCurrentView("dashboard")
   }
 
@@ -92,8 +142,8 @@ export default function Page() {
           address: {
             formatted_address: a.street,
             components: {
-              route: a.street.split(" ")[0] || "",
-              street_number: a.street.split(" ")[1] || "",
+              route: undefined,
+              street_number: undefined,
               locality: a.city || "",
               administrative_area_level_1: a.state || "",
               country: a.country || "AR",
@@ -129,6 +179,22 @@ export default function Page() {
 
       const data = await response.json()
       console.log("Direcciones procesadas por el backend:", data)
+      const backendAddresses: Address[] = data.direcciones.map((d: any) => ({
+        id: String(d.id),
+        street: d.texto_normalizado,
+        city: "", // el backend no manda ciudad separada
+        coordinates: {
+          latitude: d.latitud,
+          longitude: d.longitud,
+        },
+        hash_geoloc: d.hash_geoloc, // ✅ este es el que necesitás
+        apartment: d.depto ?? "",
+        floor: d.piso ?? "",
+        zipCode: "",
+        country: "Argentina",
+      }));
+      
+      setAddresses(backendAddresses);
       setDireccionesBackend(data.direcciones)
       setCurrentView("map-view")
     } catch (err) {
@@ -188,6 +254,9 @@ export default function Page() {
           <Settings className="h-4 w-4" />
           Configuración
         </Button>
+        <Button variant="outline" onClick={handleClearSession} className="gap-2">
+          Nueva sesión
+        </Button>
       </div>
 
       {/* VISTAS PRINCIPALES */}
@@ -197,6 +266,8 @@ export default function Page() {
             onLoadAddresses={handleAddressesLoaded}
             onViewMap={handleViewMap}
             deliveries={deliveries}
+            direccionesBackend={direccionesBackend}
+            onDireccionesBackend={setDireccionesBackend}
           />
         </div>
       )}
@@ -208,13 +279,16 @@ export default function Page() {
           conductorId={conductorId}
           onBack={handleHomeClick}
           onStartRoute={handleStartRoute}
+          onRouteCalculated={handleRouteCalculated}
           showRouteControls
         />
       )}
 
       {currentView === "route-navigation" && (
         <RouteNavigation
-          addresses={addresses}
+          addresses={orderedRouteAddresses.length > 0 ? orderedRouteAddresses : addresses}
+          rutaId={currentRutaId}
+          conductorId={conductorId}
           onBack={handleViewMap}
           onComplete={handleRouteComplete}
         />

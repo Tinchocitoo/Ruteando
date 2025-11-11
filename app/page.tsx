@@ -114,6 +114,23 @@ export default function Page() {
     setDeliveries((prev) => [...prev, summary])
     setCurrentView("dashboard")
   }
+  
+  // Limpiar datos locales de la sesión actual y almacenamiento
+  const handleClearSession = () => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("ruteando.addresses")
+        localStorage.removeItem("ruteando.backend.addresses")
+        localStorage.removeItem("ruteando.history")
+      }
+    } catch {}
+    setAddresses([])
+    setDireccionesBackend([])
+    setOrderedRouteAddresses([])
+    setDeliveries([])
+    setCurrentRutaId(null)
+    setCurrentView("dashboard")
+  }
 
   // --- Dashboard: carga y envía direcciones al backend ---
   const handleAddressesLoaded = async (addressesList: Address[]) => {
@@ -125,8 +142,8 @@ export default function Page() {
           address: {
             formatted_address: a.street,
             components: {
-              route: a.street.split(" ")[0] || "",
-              street_number: a.street.split(" ")[1] || "",
+              route: undefined,
+              street_number: undefined,
               locality: a.city || "",
               administrative_area_level_1: a.state || "",
               country: a.country || "AR",
@@ -237,6 +254,9 @@ export default function Page() {
           <Settings className="h-4 w-4" />
           Configuración
         </Button>
+        <Button variant="outline" onClick={handleClearSession} className="gap-2">
+          Nueva sesión
+        </Button>
       </div>
 
       {/* VISTAS PRINCIPALES */}
@@ -246,6 +266,8 @@ export default function Page() {
             onLoadAddresses={handleAddressesLoaded}
             onViewMap={handleViewMap}
             deliveries={deliveries}
+            direccionesBackend={direccionesBackend}
+            onDireccionesBackend={setDireccionesBackend}
           />
         </div>
       )}

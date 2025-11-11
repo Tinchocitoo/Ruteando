@@ -9,6 +9,7 @@ import {
   IniciarRutaResponse,
   RegistrarIntentoEntregaRequest,
   RegistrarIntentoEntregaResponse,
+  DireccionBackend,
 } from "@/types/backend"
 
 /* ==========================
@@ -120,5 +121,22 @@ export function apiRegistrarIntentoEntrega(payload: RegistrarIntentoEntregaReque
   return http<RegistrarIntentoEntregaResponse>("/api/entregas/registrar_intento/", {
     method: "POST",
     body: JSON.stringify(payload),
+  })
+}
+
+// Direcciones: actualizar
+export function apiActualizarDireccion(id: number, payload: Partial<DireccionBackend> & {
+  address?: any; floor?: string | null; apartment?: string | null; packages?: number;
+}) {
+  return http<DireccionBackend>(`/api/direcciones/${id}/`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
+// Direcciones: eliminar
+export function apiEliminarDireccion(id: number) {
+  return http<{ mensaje: string }>(`/api/direcciones/${id}/`, {
+    method: "DELETE",
   })
 }

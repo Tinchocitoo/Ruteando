@@ -49,6 +49,7 @@ export function MapView({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
 
   const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -89,17 +90,12 @@ export function MapView({
     document.head.appendChild(script);
   }, [googleMapsApiKey]);
 
-  const initMap = () => {
-    if (mapInstanceRef.current || !mapRef.current) return;
+  const drawMarkers = () => {
+    if (!mapInstanceRef.current) return;
     const g = window.google.maps;
-
-    mapInstanceRef.current = new g.Map(mapRef.current, {
-      center: DEFAULT_CENTER,
-      zoom: 12,
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: true,
-    });
+    // Clear previous markers
+    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current = [];
 
     const bounds = new g.LatLngBounds();
     addresses.forEach((addr) => {
@@ -112,11 +108,32 @@ export function MapView({
         map: mapInstanceRef.current!,
         title: addr.street,
       });
+      markersRef.current.push(marker);
       bounds.extend(marker.getPosition()!);
     });
 
     if (!bounds.isEmpty()) mapInstanceRef.current.fitBounds(bounds);
   };
+
+  const initMap = () => {
+    if (mapInstanceRef.current || !mapRef.current) return;
+    const g = window.google.maps;
+
+    mapInstanceRef.current = new g.Map(mapRef.current, {
+      center: DEFAULT_CENTER,
+      zoom: 12,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: true,
+    });
+    drawMarkers();
+  };
+
+  // Redraw markers when addresses change
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    drawMarkers();
+  }, [addresses]);
 
   const drawPolyline = (encodedPolyline: string, map: google.maps.Map) => {
     const g = (window as any).google;
@@ -319,6 +336,22 @@ const handleRecalculateRoute = async () => {
       streetViewControl: false,
       fullscreenControl: true,
     });
+    // Reset and draw current markers
+    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current = [];
+    const gmaps = window.google.maps;
+    const bounds = new gmaps.LatLngBounds();
+    addresses.forEach((addr) => {
+      if (!addr.coordinates) return;
+      const marker = new gmaps.Marker({
+        position: { lat: addr.coordinates.latitude, lng: addr.coordinates.longitude },
+        map: mapInstanceRef.current!,
+        title: addr.street,
+      });
+      markersRef.current.push(marker);
+      bounds.extend(marker.getPosition()!);
+    });
+    if (!bounds.isEmpty()) mapInstanceRef.current.fitBounds(bounds);
   }
 
   await handleCalculateRoute();

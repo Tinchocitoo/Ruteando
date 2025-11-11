@@ -211,6 +211,10 @@ const handleComplete = async (success: boolean) => {
     );
   }
 
+  // Detectar si hay fallidas para permitir reintentos rápidos
+  const firstFailedIndex = addresses.findIndex((a) => deliveryStatus.get(a.id) === 'failed');
+  const hasFailures = firstFailedIndex >= 0;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -337,6 +341,20 @@ const handleComplete = async (success: boolean) => {
           </Card>
         );
       })()}
+
+      {hasFailures && (
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={() => {
+            const failedAddr = addresses[firstFailedIndex];
+            const next = new Map(deliveryStatus);
+            next.delete(failedAddr.id);
+            setDeliveryStatus(next);
+            setCurrentIndex(firstFailedIndex);
+          }}>
+            Reintentar fallidas
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

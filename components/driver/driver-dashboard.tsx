@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { MapPin, PlusCircle, Upload } from "lucide-react"
 
 import { Address } from "@/types/address"
-import { apiCargarDirecciones } from "@/services/api"
+import { apiCargarDirecciones, apiActualizarDireccion, apiEliminarDireccion } from "@/services/api"
 import type { CargarDireccionesRequest, DireccionBackend, FrontAddressPayload } from "@/types/backend"
 
 interface DriverDashboardProps {
@@ -15,12 +15,15 @@ interface DriverDashboardProps {
   onViewMap: () => void
   deliveries?: any[]
   onDireccionesBackend?: (d: DireccionBackend[]) => void // <-- para pasar al MapView lo que devuelve backend
+  direccionesBackend?: DireccionBackend[]
 }
 
-export function DriverDashboard({ onLoadAddresses, onViewMap, deliveries = [], onDireccionesBackend }: DriverDashboardProps) {
+export function DriverDashboard({ onLoadAddresses, onViewMap, deliveries = [], onDireccionesBackend, direccionesBackend = [] }: DriverDashboardProps) {
   const [addresses, setAddresses] = useState<Address[]>([])
   const [mapsReady, setMapsReady] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState<{ piso?: string; depto?: string }>({})
 
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -120,6 +123,42 @@ useEffect(() => {
     setAddresses((prev) => [...prev, newAddress])
     setForm({ id: "", street: "", apartment: "", floor: "", city: "", state: "", zipCode: "", country: "", coordinates: undefined })
     if (inputRef.current) inputRef.current.value = ""
+  }
+
+  // Edición/Borrado en backend
+  const handleEditBackend = (d: DireccionBackend) => {
+    setEditingId(d.id)
+    setEditForm({ piso: d.piso ?? "", depto: d.depto ?? "" })
+  }
+
+  const handleSaveBackend = async (d: DireccionBackend) => {
+    try {
+      setLoading(true)
+      const updated = await apiActualizarDireccion(d.id, { floor: editForm.piso ?? null, apartment: editForm.depto ?? null })
+      const next = direccionesBackend.map((x) => (x.id === d.id ? { ...x, piso: updated.piso, depto: updated.depto } : x))
+      onDireccionesBackend?.(next)
+      setEditingId(null)
+    } catch (e) {
+      console.error(e)
+      alert("No se pudo actualizar la dirección en el backend.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteBackend = async (d: DireccionBackend) => {
+    if (!confirm(`Eliminar "${d.texto_normalizado}"?`)) return
+    try {
+      setLoading(true)
+      await apiEliminarDireccion(d.id)
+      const next = direccionesBackend.filter((x) => x.id !== d.id)
+      onDireccionesBackend?.(next)
+    } catch (e) {
+      console.error(e)
+      alert("No se pudo eliminar la dirección en el backend.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   // 👉 Enviar al backend para normalizar y guardar
@@ -247,6 +286,48 @@ useEffect(() => {
               {addresses.map((a, i) => (
                 <li key={a.id}>
                   {i + 1}. {a.street} {a.floor && ` • Piso ${a.floor}`} {a.apartment && ` • Depto ${a.apartment}`}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {direccionesBackend.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base font-medium">Direcciones en backend</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-3 text-sm">
+              {direccionesBackend.map((d) => (
+                <li key={d.id} className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="font-medium">{d.texto_normalizado}</div>
+                    {editingId === d.id ? (
+                      <div className="mt-2 flex gap-2">
+                        <Input value={editForm.piso ?? ""} onChange={(e) => setEditForm((p) => ({ ...p, piso: e.target.value }))} placeholder="Piso" className="w-28" />
+                        <Input value={editForm.depto ?? ""} onChange={(e) => setEditForm((p) => ({ ...p, depto: e.target.value }))} placeholder="Depto" className="w-28" />
+                      </div>
+                    ) : (
+                      <div className="text-muted-foreground">
+                        {d.piso && `Piso ${d.piso}`} {d.depto && `· Depto ${d.depto}`}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {editingId === d.id ? (
+                      <>
+                        <Button size="sm" onClick={() => handleSaveBackend(d)} disabled={loading}>Guardar</Button>
+                        <Button size="sm" variant="outline" onClick={() => setEditingId(null)} disabled={loading}>Cancelar</Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => handleEditBackend(d)}>Editar</Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleDeleteBackend(d)} disabled={loading}>Borrar</Button>
+                      </>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

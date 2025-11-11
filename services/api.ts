@@ -124,6 +124,11 @@ export function apiRegistrarIntentoEntrega(payload: RegistrarIntentoEntregaReque
   })
 }
 
+// Historial de entregas (todas en DB)
+export function apiObtenerHistorial() {
+  return http<any>("/api/entregas/historial/")
+}
+
 // Direcciones: actualizar
 export function apiActualizarDireccion(id: number, payload: Partial<DireccionBackend> & {
   address?: any; floor?: string | null; apartment?: string | null; packages?: number;

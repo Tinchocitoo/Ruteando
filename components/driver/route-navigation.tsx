@@ -71,20 +71,29 @@ useEffect(() => {
       const entregaMap = new Map<string, number>();
 
       (response.entregas_creadas || []).forEach((entrega: any) => {
-        if (entrega.hash_geoloc) {
-          entregaMap.set(entrega.hash_geoloc, entrega.ruta_entrega_id);
-        }
-        if (typeof entrega.latitud === 'number' && typeof entrega.longitud === 'number') {
-          const coordKey = `${entrega.latitud.toFixed(5)}_${entrega.longitud.toFixed(5)}`;
-          entregaMap.set(coordKey, entrega.ruta_entrega_id);
+        const hash = entrega.hash_geoloc ?? "";
+      
+        // 🧠 Si el backend NO envía floor/apartment, no los concatenamos
+        const floor = entrega.floor ?? "";
+        const apartment = entrega.apartment ?? "";
+        const hasSublevel = floor || apartment;
+      
+        const composedKey = hasSublevel
+          ? `${hash}_${floor}_${apartment}`.trim()
+          : hash; // fallback: usar solo hash si el backend no manda subniveles
+      
+        entregaMap.set(composedKey, entrega.ruta_entrega_id);
+      
+        // Fallback por coordenadas (por si alguna dirección no tiene hash)
+        if (typeof entrega.latitud === "number" && typeof entrega.longitud === "number") {
+          const keys = [5, 4, 3].map(
+            (p) => `${entrega.latitud.toFixed(p)}_${entrega.longitud.toFixed(p)}`
+          );
+          keys.forEach((k) => entregaMap.set(k, entrega.ruta_entrega_id));
         }
       });
-
-      console.log(
-        "📦 Mapa entregaMap (hash_geoloc → ruta_entrega_id):",
-        Array.from(entregaMap.entries())
-      );
-
+      
+      console.log("📦 Claves entregaMap:", Array.from(entregaMap.keys()));
       setAddressToRutaEntregaId(entregaMap);
       setIsInitializing(false);
     } catch (err: any) {
@@ -96,19 +105,22 @@ useEffect(() => {
 
   initializeRoute();
 }, [rutaId, conductorId]);
+
 const handleComplete = async (success: boolean) => {
   if (!conductorId || !current.coordinates) {
     alert("Faltan datos necesarios para registrar la entrega");
     return;
   }
 
-  // 🧩 Usar hash_geoloc del objeto actual
-  const key = current.hash_geoloc;
-  let rutaEntregaId = key ? addressToRutaEntregaId.get(key) : undefined;
-  if (!rutaEntregaId && current.coordinates) {
-    const coordKey = `${current.coordinates.latitude.toFixed(5)}_${current.coordinates.longitude.toFixed(5)}`;
-    rutaEntregaId = addressToRutaEntregaId.get(coordKey);
+ // 🧩 NUEVO: Clave compuesta para distinguir pisos/deptos del mismo edificio
+ const key = `${current.hash_geoloc}_${current.floor ?? ""}_${current.apartment ?? ""}`.trim();
+ let rutaEntregaId = addressToRutaEntregaId.get(key);
+
+// Fallback opcional: si no lo encuentra, probar con hash solo
+  if (!rutaEntregaId && current.hash_geoloc) {
+    rutaEntregaId = addressToRutaEntregaId.get(current.hash_geoloc);
   }
+
 
   console.log("📍 current.hash_geoloc:", key);
   console.log("🔗 rutaEntregaId encontrado:", rutaEntregaId);

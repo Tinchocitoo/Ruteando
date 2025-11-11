@@ -138,26 +138,38 @@ export default function Page() {
 
     try {
       const body = {
-        direcciones: addressesList.map((a) => ({
-          address: {
-            formatted_address: a.street,
-            components: {
-              route: undefined,
-              street_number: undefined,
-              locality: a.city || "",
-              administrative_area_level_1: a.state || "",
-              country: a.country || "AR",
-              postal_code: a.zipCode || "",
+        direcciones: addressesList.map((a) => {
+          let routeParsed = ""
+          let numberParsed = ""
+          if (a.street) {
+            const m = a.street.match(/^(.*?)(?:\s+(\d+[^,]*))?(?:,|$)/)
+            if (m) {
+              routeParsed = (m[1] || "").trim()
+              numberParsed = (m[2] || "").trim()
+            }
+          }
+
+          return {
+            address: {
+              formatted_address: a.street,
+              components: {
+                route: routeParsed || undefined,
+                street_number: numberParsed || undefined,
+                locality: a.city || "",
+                administrative_area_level_1: a.state || "",
+                country: a.country || "AR",
+                postal_code: a.zipCode || "",
+              },
+              location: {
+                lat: a.coordinates?.latitude,
+                lng: a.coordinates?.longitude,
+              },
             },
-            location: {
-              lat: a.coordinates?.latitude,
-              lng: a.coordinates?.longitude,
-            },
-          },
-          floor: a.floor || "",
-          apartment: a.apartment || "",
-          packages: 1,
-        })),
+            floor: a.floor || "",
+            apartment: a.apartment || "",
+            packages: 1,
+          }
+        }),
       }
 
       const headers: Record<string, string> = {

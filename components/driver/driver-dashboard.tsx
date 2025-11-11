@@ -5,25 +5,22 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MapPin, PlusCircle, Upload } from "lucide-react"
-
 import { Address } from "@/types/address"
-import { apiCargarDirecciones, apiActualizarDireccion, apiEliminarDireccion } from "@/services/api"
+import { apiCargarDirecciones } from "@/services/api"
 import type { CargarDireccionesRequest, DireccionBackend, FrontAddressPayload } from "@/types/backend"
 
 interface DriverDashboardProps {
   onLoadAddresses: (addresses: Address[]) => void
   onViewMap: () => void
   deliveries?: any[]
-  onDireccionesBackend?: (d: DireccionBackend[]) => void // <-- para pasar al MapView lo que devuelve backend
+  onDireccionesBackend?: (d: DireccionBackend[]) => void
   direccionesBackend?: DireccionBackend[]
 }
 
-export function DriverDashboard({ onLoadAddresses, onViewMap, deliveries = [], onDireccionesBackend, direccionesBackend = [] }: DriverDashboardProps) {
+export function DriverDashboard({ onLoadAddresses, onViewMap, deliveries = [], onDireccionesBackend }: DriverDashboardProps) {
   const [addresses, setAddresses] = useState<Address[]>([])
   const [mapsReady, setMapsReady] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [editForm, setEditForm] = useState<{ piso?: string; depto?: string }>({})
 
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -40,75 +37,114 @@ export function DriverDashboard({ onLoadAddresses, onViewMap, deliveries = [], o
     coordinates: undefined,
   })
 
-useEffect(() => {
-  if (typeof window === "undefined") return
-  if ((window as any).google?.maps?.places) {
-    setMapsReady(true)
-    return
-  }
-
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-  if (!key) return
-
-  if (document.querySelector("#places-script")) {
-    setMapsReady(true); return
-  }
-
-  const script = document.createElement("script")
-  script.id = "places-script"
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`
-  script.async = true
-  script.defer = true
-  script.onload = () => setMapsReady(true)
-  document.head.appendChild(script)
-}, [])
-
-
-useEffect(() => {
-  if (!mapsReady || !inputRef.current) return;
-
-  // Espera hasta que google.maps.places exista realmente
-  const waitForGoogle = () => {
-    if (typeof window === "undefined" || !window.google?.maps?.places) {
-      console.warn("⏳ Esperando que Google Maps esté listo...");
-      setTimeout(waitForGoogle, 300);
-      return;
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if ((window as any).google?.maps?.places) {
+      setMapsReady(true)
+      return
     }
 
-    console.log("✅ Google Maps Places completamente cargado");
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+    if (!key) return
 
-    // Inicializa el autocompletado
-    autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current!, {
-      fields: ["address_components", "geometry", "formatted_address"],
-      // componentRestrictions: { country: "ar" }, // opcional
-    });
+    if (document.querySelector("#places-script")) {
+      setMapsReady(true)
+      return
+    }
 
-    autocompleteRef.current.addListener("place_changed", () => {
-      const place = autocompleteRef.current?.getPlace();
-      if (!place?.geometry?.location) return;
+    const script = document.createElement("script")
+    script.id = "places-script"
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places&region=AR&language=es-AR`
+    script.async = true
+    script.defer = true
+    script.onload = () => setMapsReady(true)
+    document.head.appendChild(script)
+  }, [])
 
-      const lat = place.geometry.location.lat();
-      const lng = place.geometry.location.lng();
+  useEffect(() => {
+    if (!mapsReady || !inputRef.current) return
 
-      const comp: Record<string, string> = {};
-      place.address_components?.forEach((c) => {
-        for (const t of c.types) comp[t] = c.long_name;
-      });
+    const waitForGoogle = () => {
+      if (typeof window === "undefined" || !window.google?.maps?.places) {
+        setTimeout(waitForGoogle, 300)
+        return
+      }
 
-      setForm((prev) => ({
-        ...prev,
-        street: place.formatted_address ?? "",
-        city: comp.locality || comp.administrative_area_level_2 || "",
-        state: comp.administrative_area_level_1 || "",
-        zipCode: comp.postal_code || "",
-        country: comp.country || "",
-        coordinates: { latitude: lat, longitude: lng },
-      }));
-    });
-  };
+      autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current!, {
+        fields: ["address_components", "geometry", "formatted_address"],
+        componentRestrictions: { country: "ar" },
+      })
 
-  waitForGoogle();
-}, [mapsReady]);
+      autocompleteRef.current.addListener("place_changed", () => {
+        const place = autocompleteRef.current?.getPlace()
+        if (!place?.geometry?.location) return
+
+        const lat = place.geometry.location.lat()
+        const lng = place.geometry.location.lng()
+
+        const comp: Record<string, string> = {}
+        place.address_components?.forEach((c) => {
+          for (const t of c.types) comp[t] = c.long_name
+        })
+
+        const baseZip = comp.postal_code || ""
+        const zipSuffix = comp.postal_code_suffix || ""
+        const zipCombined = baseZip && zipSuffix ? `${baseZip}${zipSuffix}` : baseZip
+
+        if (!zipCombined && (window as any).google?.maps?.Geocoder) {
+          const geocoder = new (window as any).google.maps.Geocoder()
+          geocoder.geocode({ location: { lat, lng } }, (results: any, status: any) => {
+            let gZip = ""
+            if (status === "OK" && results?.length) {
+              for (const r of results) {
+                for (const c of r.address_components || []) {
+                  if (Array.isArray(c.types) && c.types.includes("postal_code")) {
+                    gZip = c.long_name || gZip
+                  }
+                  if (Array.isArray(c.types) && c.types.includes("postal_code_suffix") && gZip) {
+                    gZip += c.long_name || ""
+                  }
+                }
+              }
+            }
+            setForm((prev) => ({
+              ...prev,
+              street: place.formatted_address ?? "",
+              city: comp.locality || comp.administrative_area_level_2 || "",
+              state: comp.administrative_area_level_1 || "",
+              zipCode: gZip,
+              country: comp.country || "",
+              coordinates: { latitude: lat, longitude: lng },
+            }))
+          })
+          return
+        }
+
+        setForm((prev) => ({
+          ...prev,
+          street: place.formatted_address ?? "",
+          city: comp.locality || comp.administrative_area_level_2 || "",
+          state: comp.administrative_area_level_1 || "",
+          zipCode: zipCombined,
+          country: comp.country || "",
+          coordinates: { latitude: lat, longitude: lng },
+        }))
+      })
+    }
+
+    waitForGoogle()
+  }, [mapsReady])
+
+  const handleDeleteAddress = (id: string) => {
+    setAddresses((prev) => prev.filter((a) => a.id !== id))
+  }
+  
+  const handleEditAddress = (id: string) => {
+    const addr = addresses.find((a) => a.id === id)
+    if (!addr) return
+    setForm(addr)
+    if (inputRef.current) inputRef.current.value = addr.street
+  }
 
   const handleChange = (field: keyof Address, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }))
@@ -125,43 +161,6 @@ useEffect(() => {
     if (inputRef.current) inputRef.current.value = ""
   }
 
-  // Edición/Borrado en backend
-  const handleEditBackend = (d: DireccionBackend) => {
-    setEditingId(d.id)
-    setEditForm({ piso: d.piso ?? "", depto: d.depto ?? "" })
-  }
-
-  const handleSaveBackend = async (d: DireccionBackend) => {
-    try {
-      setLoading(true)
-      const updated = await apiActualizarDireccion(d.id, { floor: editForm.piso ?? null, apartment: editForm.depto ?? null })
-      const next = direccionesBackend.map((x) => (x.id === d.id ? { ...x, piso: updated.piso, depto: updated.depto } : x))
-      onDireccionesBackend?.(next)
-      setEditingId(null)
-    } catch (e) {
-      console.error(e)
-      alert("No se pudo actualizar la dirección en el backend.")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleDeleteBackend = async (d: DireccionBackend) => {
-    if (!confirm(`Eliminar "${d.texto_normalizado}"?`)) return
-    try {
-      setLoading(true)
-      await apiEliminarDireccion(d.id)
-      const next = direccionesBackend.filter((x) => x.id !== d.id)
-      onDireccionesBackend?.(next)
-    } catch (e) {
-      console.error(e)
-      alert("No se pudo eliminar la dirección en el backend.")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // 👉 Enviar al backend para normalizar y guardar
   const handleSendToBackend = async () => {
     if (addresses.length === 0) {
       alert("Agregá al menos una dirección.")
@@ -169,36 +168,50 @@ useEffect(() => {
     }
 
     const payload: CargarDireccionesRequest = {
-      direcciones: addresses.map<FrontAddressPayload>((a) => ({
-        address: {
-          formatted_address: a.street,
-          components: {
-            route: undefined,
-            street_number: undefined,
-            locality: a.city,
-            administrative_area_level_1: a.state,
-            country: a.country,
-            postal_code: a.zipCode,
+      direcciones: addresses.map<FrontAddressPayload>((a) => {
+        // Parsear calle y número de formatted_address (mejor que split simple)
+        // Ej: "Av. Santa Fe 1234, CABA" => route: "Av. Santa Fe", street_number: "1234"
+        let routeParsed = ""
+        let numberParsed = ""
+        if (a.street) {
+          const m = a.street.match(/^(.*?)(?:\s+(\d+[^,]*))?(?:,|$)/)
+          if (m) {
+            routeParsed = (m[1] || "").trim()
+            numberParsed = (m[2] || "").trim()
+          }
+        }
+
+        return {
+          address: {
+            formatted_address: a.street,
+            components: {
+              route: routeParsed || undefined,
+              street_number: numberParsed || undefined,
+              locality: a.city,
+              administrative_area_level_1: a.state,
+              country: a.country,
+              postal_code: a.zipCode,
+            },
+            location: {
+              lat: a.coordinates?.latitude ?? 0,
+              lng: a.coordinates?.longitude ?? 0,
+            },
           },
-          location: {
-            lat: a.coordinates?.latitude ?? 0,
-            lng: a.coordinates?.longitude ?? 0,
-          },
-        },
-        floor: a.floor ?? undefined,
-        apartment: a.apartment ?? undefined,
-        packages: 1,
-      })),
+          floor: a.floor ?? undefined,
+          apartment: a.apartment ?? undefined,
+          packages: 1,
+        }
+      }),
     }
 
     try {
       setLoading(true)
       const resp = await apiCargarDirecciones(payload)
+      console.log("direcciones a mandar",resp.direcciones)
       onDireccionesBackend?.(resp.direcciones)
-      // Además, mantiene compatibilidad con vistas actuales
       onLoadAddresses(addresses)
       onViewMap()
-    } catch (e: any) {
+    } catch (e) {
       console.error(e)
       alert("Error al enviar direcciones al backend.")
     } finally {
@@ -277,63 +290,41 @@ useEffect(() => {
       </Card>
 
       {addresses.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base font-medium">Direcciones cargadas (local)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2 text-sm text-muted-foreground">
-              {addresses.map((a, i) => (
-                <li key={a.id}>
-                  {i + 1}. {a.street} {a.floor && ` • Piso ${a.floor}`} {a.apartment && ` • Depto ${a.apartment}`}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-
-      {direccionesBackend.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base font-medium">Direcciones en backend</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-3 text-sm">
-              {direccionesBackend.map((d) => (
-                <li key={d.id} className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="font-medium">{d.texto_normalizado}</div>
-                    {editingId === d.id ? (
-                      <div className="mt-2 flex gap-2">
-                        <Input value={editForm.piso ?? ""} onChange={(e) => setEditForm((p) => ({ ...p, piso: e.target.value }))} placeholder="Piso" className="w-28" />
-                        <Input value={editForm.depto ?? ""} onChange={(e) => setEditForm((p) => ({ ...p, depto: e.target.value }))} placeholder="Depto" className="w-28" />
-                      </div>
-                    ) : (
-                      <div className="text-muted-foreground">
-                        {d.piso && `Piso ${d.piso}`} {d.depto && `· Depto ${d.depto}`}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    {editingId === d.id ? (
-                      <>
-                        <Button size="sm" onClick={() => handleSaveBackend(d)} disabled={loading}>Guardar</Button>
-                        <Button size="sm" variant="outline" onClick={() => setEditingId(null)} disabled={loading}>Cancelar</Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => handleEditBackend(d)}>Editar</Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleDeleteBackend(d)} disabled={loading}>Borrar</Button>
-                      </>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
+  <Card>
+    <CardHeader>
+      <CardTitle className="text-base font-medium">Direcciones cargadas</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <ul className="space-y-2 text-sm text-muted-foreground">
+        {addresses.map((a, i) => (
+          <li key={a.id} className="flex justify-between items-center border-b pb-2">
+            <div>
+              {i + 1}. {a.street}
+              {a.floor && ` · Piso ${a.floor}`} 
+              {a.apartment && ` · Depto ${a.apartment}`}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleEditAddress(a.id)}
+              >
+                Editar
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => handleDeleteAddress(a.id)}
+              >
+                Borrar
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </CardContent>
+  </Card>
+)}
     </div>
   )
 }
